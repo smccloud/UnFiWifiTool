@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 VALID_KINDS = {"allow_during", "block_during"}
+VALID_ACTIONS = {"allow", "block"}
+VALID_DEFAULT_ACCESS = {"allowed", "blocked"}
 VALID_MODES = {"allowed", "blocked", "scheduled", "ignored"}
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 MAX_WINDOWS = 24
@@ -22,6 +24,7 @@ class ScheduleWindow:
     days: tuple[int, ...]
     start: time
     end: time
+    action: str = "allow"
 
     @property
     def crosses_midnight(self) -> bool:
@@ -30,13 +33,18 @@ class ScheduleWindow:
 
 @dataclass(frozen=True)
 class Schedule:
-    kind: str
+    default_access: str
     timezone: str
     windows: tuple[ScheduleWindow, ...]
 
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
+
+    @property
+    def kind(self) -> str:
+        """Legacy view used by older callers and stored rows."""
+        return "allow_during" if self.default_access == "blocked" else "block_during"
 
 
 def _parse_clock(value: str, field: str) -> time:
@@ -47,13 +55,39 @@ def _parse_clock(value: str, field: str) -> time:
 
 
 def validate_schedule(payload: dict) -> dict:
-    """Validate a schedule payload and return a normalized dict."""
+    """Validate a schedule payload and return a normalized dict.
+
+    Supported shape:
+      {
+        "default_access": "blocked" | "allowed",
+        "timezone": "America/New_York",
+        "windows": [
+          {"days": [0,1], "start": "09:00", "end": "17:00", "action": "allow"},
+          {"days": [0,1], "start": "22:00", "end": "07:00", "action": "block"}
+        ]
+      }
+
+    The legacy shape with ``kind`` (allow_during / block_during) and windows
+    without actions is still accepted and converted.
+    """
     if not isinstance(payload, dict):
         raise ScheduleError("schedule must be an object")
 
-    kind = payload.get("kind", "allow_during")
-    if kind not in VALID_KINDS:
+    kind = payload.get("kind")
+    if kind is not None and kind not in VALID_KINDS:
         raise ScheduleError("schedule.kind must be allow_during or block_during")
+
+    default_access = payload.get("default_access")
+    if default_access is None:
+        default_access = "blocked" if kind != "block_during" else "allowed"
+    if default_access not in VALID_DEFAULT_ACCESS:
+        raise ScheduleError("schedule.default_access must be allowed or blocked")
+
+    fallback_action = "allow" if default_access == "blocked" else "block"
+    if kind == "allow_during":
+        fallback_action = "allow"
+    elif kind == "block_during":
+        fallback_action = "block"
 
     tz_name = payload.get("timezone") or "UTC"
     if not isinstance(tz_name, str):
@@ -85,28 +119,37 @@ def validate_schedule(payload: dict) -> dict:
         end = _parse_clock(raw.get("end"), f"window {index} end")
         if start == end:
             raise ScheduleError(f"window {index}: start and end must differ")
+        action = raw.get("action") or fallback_action
+        if action not in VALID_ACTIONS:
+            raise ScheduleError(f"window {index}: action must be allow or block")
         normalized_windows.append(
             {
                 "days": sorted(clean_days),
                 "start": start.strftime("%H:%M"),
                 "end": end.strftime("%H:%M"),
+                "action": action,
             }
         )
 
-    normalized_windows.sort(key=lambda item: (item["start"], item["end"]))
-    return {"kind": kind, "timezone": tz_name, "windows": normalized_windows}
+    normalized_windows.sort(key=lambda item: (item["start"], item["end"], item["action"]))
+    return {
+        "default_access": default_access,
+        "timezone": tz_name,
+        "windows": normalized_windows,
+    }
 
 
 def schedule_from_dict(payload: dict) -> Schedule:
-    normalized = payload if "windows" in payload else validate_schedule(payload)
+    normalized = validate_schedule(payload)
     return Schedule(
-        kind=normalized["kind"],
+        default_access=normalized["default_access"],
         timezone=normalized["timezone"],
         windows=tuple(
             ScheduleWindow(
                 days=tuple(window["days"]),
                 start=_parse_clock(window["start"], "start"),
                 end=_parse_clock(window["end"], "end"),
+                action=window["action"],
             )
             for window in normalized["windows"]
         ),
@@ -118,25 +161,30 @@ def load_schedule(device) -> Schedule | None:  # noqa: ANN001
         return None
     try:
         windows = json.loads(device.schedule_windows)
-        return schedule_from_dict(
-            {
-                "kind": device.schedule_kind,
-                "timezone": device.schedule_timezone,
-                "windows": windows,
-            }
-        )
+        payload = {
+            "kind": getattr(device, "schedule_kind", None) or "allow_during",
+            "timezone": device.schedule_timezone,
+            "windows": windows,
+        }
+        default_access = getattr(device, "schedule_default", None)
+        if default_access:
+            payload["default_access"] = default_access
+        return schedule_from_dict(payload)
     except (ValueError, TypeError, KeyError, ScheduleError):
         return None
 
 
 def save_schedule(device, normalized: dict) -> None:  # noqa: ANN001
-    device.schedule_kind = normalized["kind"]
+    device.schedule_default = normalized["default_access"]
+    # Keep the legacy field in sync for databases that predate schedule_default.
+    device.schedule_kind = "allow_during" if normalized["default_access"] == "blocked" else "block_during"
     device.schedule_timezone = normalized["timezone"]
     device.schedule_windows = json.dumps(normalized["windows"], separators=(",", ":"))
 
 
 def clear_schedule(device) -> None:  # noqa: ANN001
     device.schedule_kind = "allow_during"
+    device.schedule_default = None
     device.schedule_timezone = None
     device.schedule_windows = None
     device.next_change_at = None
@@ -146,13 +194,14 @@ def schedule_to_dict(schedule: Schedule | None) -> dict | None:
     if schedule is None:
         return None
     return {
-        "kind": schedule.kind,
+        "default_access": schedule.default_access,
         "timezone": schedule.timezone,
         "windows": [
             {
                 "days": list(window.days),
                 "start": window.start.strftime("%H:%M"),
                 "end": window.end.strftime("%H:%M"),
+                "action": window.action,
             }
             for window in schedule.windows
         ],
@@ -188,6 +237,32 @@ def is_active(schedule: Schedule, at: datetime) -> bool:
     return False
 
 
+def scheduled_access(schedule: Schedule, at: datetime) -> str:
+    """Evaluate a schedule. Block windows always win over allow windows."""
+    local = _localize(at, schedule.tz)
+    today = local.date()
+    block_active = False
+    allow_active = False
+
+    for offset in (0, -1):
+        day = today + timedelta(days=offset)
+        for window in schedule.windows:
+            if day.weekday() not in window.days:
+                continue
+            start, end = _window_bounds(day, window, schedule.tz)
+            if start <= local < end:
+                if window.action == "block":
+                    block_active = True
+                else:
+                    allow_active = True
+
+    if block_active:
+        return "blocked"
+    if allow_active:
+        return "allowed"
+    return schedule.default_access
+
+
 def effective_access(access_mode: str, schedule: Schedule | None, at: datetime) -> str:
     """Compute the access state that should be enforced at `at`."""
     if access_mode not in VALID_MODES:
@@ -201,16 +276,13 @@ def effective_access(access_mode: str, schedule: Schedule | None, at: datetime) 
     if schedule is None:
         # Fail closed if the stored schedule is unreadable.
         return "blocked"
-    active = is_active(schedule, at)
-    if schedule.kind == "allow_during":
-        return "allowed" if active else "blocked"
-    return "blocked" if active else "allowed"
+    return scheduled_access(schedule, at)
 
 
 def next_transition(schedule: Schedule, at: datetime) -> datetime | None:
-    """Find the next instant at which the schedule's active state changes."""
+    """Find the next instant at which the schedule's effective state changes."""
     local = _localize(at, schedule.tz)
-    current = is_active(schedule, at)
+    current = scheduled_access(schedule, at)
     today = local.date()
     candidates: list[datetime] = []
 
@@ -223,7 +295,7 @@ def next_transition(schedule: Schedule, at: datetime) -> datetime | None:
             for boundary in (start, end):
                 if boundary <= local:
                     continue
-                if is_active(schedule, boundary.astimezone(timezone.utc)) != current:
+                if scheduled_access(schedule, boundary.astimezone(timezone.utc)) != current:
                     candidates.append(boundary)
 
     if not candidates:

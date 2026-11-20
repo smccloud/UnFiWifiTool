@@ -1,0 +1,99 @@
+# unRAID installation
+
+This image is designed to run directly through unRAID's **Docker** tab
+(Stable Docker Manager). Docker Compose is optional and not required.
+
+## 1. Build/push the image
+
+On a build machine:
+
+```bash
+docker build -t <your-registry>/unifi-wifi-tool:latest .
+docker push <your-registry>/unifi-wifi-tool:latest
+```
+
+Or build it on the unRAID box and skip the push.
+
+## 2. Add the container
+
+1. Copy `unifi-wifi-tool.xml` to
+   `/boot/config/plugins/dockerMan/templates-user/` (or add it through the
+   unRAID template UI).
+2. Change `<Repository>` in the XML to your pushed image.
+3. In unRAID: **Docker → Add Container**, select the
+   **UniFi-WiFi-Access-Manager** template.
+4. Set:
+   - **AppData**: `/mnt/user/appdata/unifi-wifi-tool`
+   - **Web UI** port: usually `8080` → container port `8000`
+   - **APP_PASSWORD** and **SECRET_KEY**
+   - **UNIFI_HOST**, **UNIFI_API_KEY**
+   - **UNIFI_USERNAME** and **UNIFI_PASSWORD** if you want block/unblock
+5. Apply.
+
+The database is stored at:
+
+```
+/mnt/user/appdata/unifi-wifi-tool/unifi-wifi.db
+```
+
+UniFi block/unblock needs a local-only UniFi admin. The API key alone can read
+the controller and WiFi configuration but cannot block clients.
+
+## Permissions
+
+The template uses `--user 99:100` (the standard unRAID `nobody:users` identity)
+and the image runs as a non-root user. Prepare the appdata directory before the
+first start:
+
+```bash
+mkdir -p /mnt/user/appdata/unifi-wifi-tool
+chown -R 99:100 /mnt/user/appdata/unifi-wifi-tool
+```
+
+If you use different UID/GID values, change `--user` in **Extra Parameters** and
+make the appdata directory match.
+
+## Upgrades and persistence
+
+The appdata path is a bind mount to `/data`, not an anonymous volume. Updating
+the container image in unRAID recreates the container but keeps that directory.
+The `unifi-wifi.db`, `unifi-wifi.db-wal`, and `unifi-wifi.db-shm` files survive
+image updates. Do not delete the appdata directory when removing/updating the
+container.
+
+Back up a consistent database copy with:
+
+```bash
+docker exec UniFi-WiFi-Access-Manager python -c \
+  "import sqlite3; s=sqlite3.connect('/data/unifi-wifi.db'); d=sqlite3.connect('/tmp/backup.db'); s.backup(d); d.close(); s.close()"
+
+docker cp UniFi-WiFi-Access-Manager:/tmp/backup.db \
+  /mnt/user/backups/unifi-wifi-$(date +%F).db
+```
+
+Alternatively stop the container and copy the database files.
+
+## Standalone `docker run`
+
+Without unRAID's template manager:
+
+```bash
+docker run -d \
+  --name unifi-wifi-tool \
+  --restart unless-stopped \
+  --init \
+  --user 99:100 \
+  -p 8080:8000 \
+  -v /mnt/user/appdata/unifi-wifi-tool:/data \
+  -e APP_USERNAME=admin \
+  -e APP_PASSWORD='change-me' \
+  -e SECRET_KEY="$(openssl rand -base64 48)" \
+  -e UNIFI_HOST='https://192.168.1.1' \
+  -e UNIFI_API_KEY='...' \
+  -e UNIFI_USERNAME='unifi-service' \
+  -e UNIFI_PASSWORD='...' \
+  <your-registry>/unifi-wifi-tool:latest
+```
+
+On a normal Linux host, omit `--user 99:100` and point the volume at any
+directory writable by the image's `app` user.

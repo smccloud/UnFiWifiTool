@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import get_request_id, get_service
 from app.models import Device
-from app.reconcile import apply_device_now
+from app.reconcile import apply_device_now, refresh_device_state
 from app.schedule import ScheduleError, clear_schedule, save_schedule, validate_schedule
 from app.schemas import (
     DeviceCreate,
@@ -162,15 +162,18 @@ def update_device(
     db.commit()
     db.refresh(device)
 
-    if mode_changed and payload.apply:
-        apply_device_now(
-            db,
-            service,
-            get_settings(),
-            device,
-            actor=user,
-            reason="manual",
-        )
+    if mode_changed:
+        if payload.apply:
+            apply_device_now(
+                db,
+                service,
+                get_settings(),
+                device,
+                actor=user,
+                reason="manual",
+            )
+        else:
+            refresh_device_state(device)
         db.commit()
         db.refresh(device)
 
@@ -237,8 +240,10 @@ def set_schedule(
             actor=user,
             reason="schedule_updated",
         )
-        db.commit()
-        db.refresh(device)
+    else:
+        refresh_device_state(device)
+    db.commit()
+    db.refresh(device)
 
     return device_out(device)
 

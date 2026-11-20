@@ -11,11 +11,13 @@ Docker deployment.
 
 - Builds a local inventory of WiFi clients (MAC, label, notes, SSID, IP, signal).
 - Allows, blocks, or leaves devices unmanaged through the UniFi controller.
-- Supports **time-based access**: allow only during office hours, block evenings
-  or weekends, or invert the rule. Timezone-aware, with overnight windows.
+- Supports **per-client time-based access** with custom allow and block windows
+  in the same weekly schedule. Block windows win over allow windows.
+- Timezone-aware, with overnight windows and a configurable fallback state.
 - Applies schedule transitions automatically in the background.
 - Keeps an append-only audit log of every login, change, block, and unblock.
-- Runs as a single non-root container with SQLite on a volume.
+- Includes light, dark, and follow-system themes.
+- Runs as a single non-root container with SQLite in `/data`.
 
 ## Important UniFi constraint
 
@@ -38,21 +40,75 @@ associate before it is blocked.
 
 ## Quick start
 
+Docker Compose is optional. The image is designed to be run directly, including
+through unRAID's Docker Manager.
+
 ```bash
 git clone <this-repo> unifi-wifi-tool
 cd unifi-wifi-tool
+docker build -t unifi-wifi-tool:latest .
 
-cp .env.example .env
-chmod 600 .env
-
-# Generate a session secret
-openssl rand -base64 48
-
-# Put the value in SECRET_KEY, set a strong APP_PASSWORD, then:
-docker compose up -d --build
+mkdir -p /opt/unifi-wifi-tool
+docker run -d \
+  --name unifi-wifi-tool \
+  --restart unless-stopped \
+  --init \
+  -p 8080:8000 \
+  -v /opt/unifi-wifi-tool:/data \
+  -e APP_USERNAME=admin \
+  -e APP_PASSWORD='choose-a-strong-password' \
+  -e SECRET_KEY="$(openssl rand -base64 48)" \
+  -e UNIFI_HOST='https://192.168.1.1' \
+  -e UNIFI_API_KEY='...' \
+  -e UNIFI_USERNAME='unifi-service' \
+  -e UNIFI_PASSWORD='...' \
+  unifi-wifi-tool:latest
 ```
 
 Open <http://localhost:8080> (or the host/IP where the container runs).
+
+- **unRAID:** see [unraid/README.md](unraid/README.md) and the template at
+  [unraid/unifi-wifi-tool.xml](unraid/unifi-wifi-tool.xml).
+- **Compose (optional):** `cp .env.example .env`, edit it, then
+  `docker compose up -d --build`.
+
+### unRAID notes
+
+Use a bind mount for `/data`:
+
+```
+/mnt/user/appdata/unifi-wifi-tool  ->  /data
+```
+
+The template runs the container as `99:100` (unRAID `nobody:users`). Prepare the
+directory with `chown -R 99:100 /mnt/user/appdata/unifi-wifi-tool` before the
+first start, or adjust the UID/GID in the template's Extra Parameters.
+
+### Data persistence and upgrades
+
+The SQLite database is always at `/data/unifi-wifi.db` inside the container
+(plus `-wal` and `-shm` files). It survives container recreation and image
+updates as long as `/data` is a bind mount or named volume:
+
+- unRAID: `/mnt/user/appdata/unifi-wifi-tool:/data`
+- plain Docker: `-v /opt/unifi-wifi-tool:/data`
+- Compose: the named volume `unifi-wifi-data`
+
+Do not change `DATABASE_URL` to a path outside `/data` unless you also persist
+that path. `docker compose down` keeps volumes; `docker compose down -v`
+deletes them. Removing a container in the unRAID Docker UI does **not** remove
+the appdata directory.
+
+For a consistent backup while the app is running:
+
+```bash
+docker exec unifi-wifi-tool python -c \
+  "import sqlite3; s=sqlite3.connect('/data/unifi-wifi.db'); d=sqlite3.connect('/tmp/backup.db'); s.backup(d); d.close(); s.close()"
+docker cp unifi-wifi-tool:/tmp/backup.db ./unifi-wifi-$(date +%F).db
+```
+
+The Jenkins pipeline also creates a device, replaces the container, and verifies
+the device is still present from the same `/data` volume.
 
 ### Controller setup
 
@@ -86,20 +142,33 @@ Set `APP_PASSWORD_HASH` to the output and remove `APP_PASSWORD`.
 
 ## Using time-based access
 
-Open a device → **Time-based access**:
+Open a device → **Time-based access**. Schedules are per client and can mix
+allow and block windows in one weekly rule:
 
-- **Allowed inside windows → blocked outside** — e.g. kids' tablets allowed
-  4–8pm.
-- **Blocked inside windows → allowed outside** — e.g. block a work laptop during
-  work hours, or block guest devices overnight.
-- Add multiple windows and select days (Mon–Sun).
+- **Fallback state** — what happens outside every window: blocked or allowed.
+- **Allow windows** — access is allowed while any allow window is active.
+- **Block windows** — access is blocked while any block window is active.
+- **Block wins** over allow when windows overlap.
+- Add as many windows as you need and select days (Mon–Sun).
 - Windows that cross midnight are supported: Monday `22:00–07:00` ends Tuesday
   at 07:00.
 - The scheduler evaluates every 30 seconds (`SCHEDULER_INTERVAL_SECONDS`).
 - The timezone defaults to `APP_TIMEZONE` and can be overridden per device.
 
+Examples:
+
+| Goal | Fallback | Windows |
+| --- | --- | --- |
+| Kids' tablet only 4–8pm | Blocked | Allow every day 16:00–20:00 |
+| Guest devices blocked overnight | Allowed | Block every day 22:00–07:00 |
+| Office laptop blocked during work hours | Allowed | Block Mon–Fri 09:00–17:00 |
+| Allowed weekdays 9–5, lunch blocked | Blocked | Allow Mon–Fri 09:00–17:00; Block Mon–Fri 12:00–13:00 |
+
 The UI shows the effective state and the next transition. The scheduler records
 each transition in the audit log.
+
+Use the theme switch in the top bar to choose **System**, **Light**, or **Dark**.
+The choice is stored in the browser and follows OS changes while set to System.
 
 ### Dry run first
 
@@ -137,7 +206,6 @@ cd frontend && npm run build
 
 ```bash
 docker build -t unifi-wifi-tool .
-docker compose up -d
 ```
 
 The `Jenkinsfile` builds and tests the image without pushing it:
@@ -146,7 +214,7 @@ The `Jenkinsfile` builds and tests the image without pushing it:
 2. runs backend tests in `python:3.13-slim` and publishes JUnit results,
 3. builds the frontend in `node:22-alpine`,
 4. builds the multi-stage image,
-5. validates `docker-compose.yml`,
+5. validates `docker-compose.yml` when Compose is installed,
 6. boots the image twice with `--network none` and checks, via `docker exec`:
    - `/api/healthz`,
    - the built SPA is served,
@@ -155,7 +223,9 @@ The `Jenkinsfile` builds and tests the image without pushing it:
    - wrong password returns 401,
    - login returns a CSRF token,
    - mutations without CSRF return 403,
-   - a CSRF-authenticated device create returns 201.
+   - a CSRF-authenticated device create returns 201,
+7. creates a device in a fresh `/data` volume, replaces the container, and
+   confirms the device is still present from the same database.
 
 The `DOCKER_NETWORK` parameter defaults to `host` so the pipeline also works on
 restricted/nested CI agents; set it to `default` for stricter build isolation.

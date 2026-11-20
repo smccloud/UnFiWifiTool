@@ -1,15 +1,15 @@
 export type AccessMode = "allowed" | "blocked" | "scheduled" | "ignored";
 export type EditableAccessMode = "allowed" | "blocked" | "ignored";
-export type ScheduleKind = "allow_during" | "block_during";
 
 export interface ScheduleWindow {
   days: number[];
   start: string;
   end: string;
+  action: "allow" | "block";
 }
 
 export interface Schedule {
-  kind: ScheduleKind;
+  default_access: "allowed" | "blocked";
   timezone: string;
   windows: ScheduleWindow[];
 }

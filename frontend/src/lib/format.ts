@@ -36,14 +36,17 @@ export function formatDays(days: number[]): string {
 }
 
 export function describeSchedule(schedule: Schedule): string {
-  const direction =
-    schedule.kind === "allow_during"
-      ? "Allowed inside windows, blocked outside"
-      : "Blocked inside windows, allowed outside";
+  const fallback =
+    schedule.default_access === "blocked"
+      ? "Blocked outside windows"
+      : "Allowed outside windows";
   const windows = schedule.windows
-    .map((window) => `${formatDays(window.days)} ${window.start}–${window.end}`)
+    .map(
+      (window) =>
+        `${window.action === "allow" ? "Allow" : "Block"} ${formatDays(window.days)} ${window.start}–${window.end}`,
+    )
     .join(" · ");
-  return `${direction}. ${windows} (${schedule.timezone})`;
+  return `${fallback}. ${windows} (${schedule.timezone})`;
 }
 
 export function signalLabel(signal: number | null): string {

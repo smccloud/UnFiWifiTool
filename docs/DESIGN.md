@@ -78,11 +78,20 @@ Each device has one access mode:
 
 A schedule has:
 
-- `kind`: `allow_during` (allowed inside windows, blocked outside) or
-  `block_during` (blocked inside windows, allowed outside),
+- `default_access`: the state outside every window (`allowed` or `blocked`),
 - an IANA timezone,
-- one or more weekly windows, each with days `0..6` (Monday = 0) and
-  `HH:MM` start/end times.
+- one or more weekly windows, each with days `0..6` (Monday = 0), `HH:MM`
+  start/end times, and an `action` of `allow` or `block`.
+
+Evaluation:
+
+1. If any active window has action `block`, the result is `blocked`.
+2. Otherwise, if any active window has action `allow`, the result is `allowed`.
+3. Otherwise, the result is `default_access`.
+
+Block windows therefore take priority over allow windows when they overlap.
+A single schedule can express rules such as "allowed weekdays 09:00–17:00, but
+blocked 12:00–13:00 for lunch" or "allowed outside 22:00–07:00".
 
 Rules:
 
@@ -91,8 +100,13 @@ Rules:
 - If `end <= start`, the window crosses midnight and belongs to its start day.
   A Monday `22:00–07:00` window covers Tuesday 06:59.
 - Evaluation uses the configured timezone. The next transition is computed by
-  checking window boundaries over the next eight days.
+  checking window boundaries over the next eight days, comparing the effective
+  state at each boundary.
 - A corrupt or missing schedule fails closed to `blocked`.
+- Legacy schedules that used `kind` (`allow_during` / `block_during`) and a
+  single window action are converted on read to `default_access` plus per-window
+  actions. Existing rows are migrated with an additive `schedule_default`
+  column.
 - Manual `allowed`/`blocked` modes override any stored schedule.
 - Schedules are evaluated by the background loop (default every 30 seconds)
   and applied only to explicitly managed devices.
@@ -157,7 +171,8 @@ so both mechanisms can coexist.
 
 - `mac` unique, normalized lowercase colon form.
 - `access_mode` (`allowed`, `blocked`, `scheduled`, `ignored`).
-- schedule columns (`schedule_kind`, `schedule_timezone`, `schedule_windows` JSON).
+- schedule columns (`schedule_default`, `schedule_kind` for legacy rows,
+  `schedule_timezone`, `schedule_windows` JSON with per-window actions).
 - computed state (`effective_access`, `next_change_at`).
 - enforcement bookkeeping (`last_applied_access`, `last_applied_at`, `last_error`).
 - observed controller state (`observed_blocked`, hostname, IP, SSID, signal,
@@ -241,9 +256,15 @@ Five views:
 - **Settings** — controller capabilities, SSID list/filter state, enforcement
   settings, security notes.
 
-The schedule editor includes presets (weekdays, evenings, overnight, blocking
-weekdays), day toggles, timezone selection, multiple windows, and a plain-English
-preview.
+A theme switch in the top bar offers System, Light, and Dark. The preference is
+stored in `localStorage`; System follows `prefers-color-scheme` live. A small
+external bootstrap script applies the saved theme before React renders to avoid
+a flash of the wrong theme.
+
+The schedule editor includes presets (allow weekdays, allow evenings, block
+overnight, block weekdays, weekend access), day toggles, timezone selection,
+multiple windows, per-window allow/block actions, a fallback state, and a
+plain-English preview. Block windows are evaluated before allow windows.
 
 ## 9. Security
 
@@ -280,7 +301,16 @@ preview.
 
 - Multi-stage Docker build: Node builds the SPA; Python runtime serves API and
   static files.
-- SQLite on `/data` (named volume in Compose).
+- Designed for direct `docker run` and unRAID Docker Manager. Compose is
+  optional.
+- `/data` is a declared volume. Persist it with a bind mount on unRAID
+  (`/mnt/user/appdata/unifi-wifi-tool:/data`) or a named volume elsewhere.
+  The database is always `/data/unifi-wifi.db` unless `DATABASE_URL` is
+  overridden.
+- On unRAID, running as `--user 99:100` matches the usual appdata ownership;
+  the image itself also has a non-root `app` user.
+- Startup applies additive SQLite migrations (for example, adding
+  `schedule_default`) so an existing database survives image upgrades.
 - Health check: `GET /api/healthz`.
 - Reverse proxy is optional; terminate TLS at Caddy/Traefik/nginx and set
   `COOKIE_SECURE=true`.
@@ -311,7 +341,11 @@ Before relying on enforcement, verify:
       after unblock.
 - [ ] A weekday schedule with an overnight window produces the expected
       transitions (observe the audit log).
+- [ ] A mixed schedule with an allow window and an overlapping block window
+      blocks during the overlap and allows outside it as configured.
 - [ ] The timezone matches the site's local time; DST transitions behave.
 - [ ] Blocking an offline known client persists after it reconnects.
 - [ ] `DRY_RUN=true` produces `dry_run` audit rows and no controller changes.
 - [ ] The container survives a restart with the SQLite volume intact.
+- [ ] Removing and recreating the container with the same `/data` mount keeps
+      the device inventory, schedules, and audit log.

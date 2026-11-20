@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, ApiError, setCsrfToken } from "./api";
-import { ErrorBanner, Spinner } from "./components";
+import { ErrorBanner, Spinner, ThemeSwitch } from "./components";
 import { AuditPage, ClientsPage, DevicesPage, OverviewPage, SettingsPage } from "./pages";
 import type { Page } from "./pages";
 import type { Me, Status } from "./types";
 import { errorMessage } from "./lib/format";
+import { useTheme } from "./theme";
 
 const PAGE_META: Record<Page, { title: string; subtitle: string }> = {
   overview: { title: "Overview", subtitle: "Access posture and controller health" },
@@ -24,6 +25,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const { preference, setPreference } = useTheme();
 
   const loadMe = useCallback(async () => {
     try {
@@ -116,12 +118,17 @@ export default function App() {
 
   if (!me) {
     return (
-      <LoginPage
-        startupError={startupError}
-        onLoggedIn={async () => {
-          await loadMe();
-        }}
-      />
+      <>
+        <div className="login-theme">
+          <ThemeSwitch preference={preference} onChange={setPreference} />
+        </div>
+        <LoginPage
+          startupError={startupError}
+          onLoggedIn={async () => {
+            await loadMe();
+          }}
+        />
+      </>
     );
   }
 
@@ -162,6 +169,7 @@ export default function App() {
             <p className="muted small">{meta.subtitle}</p>
           </div>
           <div className="topbar-actions">
+            <ThemeSwitch preference={preference} onChange={setPreference} />
             <span className={`pill ${status?.controller.error ? "pill-bad" : "pill-ok"}`}>
               <span className="pill-dot" />
               {status?.controller.error ? "Controller issue" : status?.controller.site?.name ?? "Controller"}

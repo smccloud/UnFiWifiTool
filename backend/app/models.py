@@ -20,10 +20,11 @@ class Device(Base):
     # allowed | blocked | scheduled | ignored
     access_mode: Mapped[str] = mapped_column(String(16), default="ignored", index=True)
 
-    # Schedule (only meaningful when access_mode == "scheduled")
-    # allow_during: allowed inside windows, blocked outside
-    # block_during: blocked inside windows, allowed outside
+    # Schedule (only meaningful when access_mode == "scheduled").
+    # Windows can individually allow or block; block windows win.
+    # schedule_default is the state outside every window.
     schedule_kind: Mapped[str] = mapped_column(String(16), default="allow_during")
+    schedule_default: Mapped[str | None] = mapped_column(String(16), nullable=True)
     schedule_timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     schedule_windows: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -209,6 +209,15 @@ def _discover(db: Session, clients: list[LiveClient], settings: Settings) -> tup
     return discovered, updated
 
 
+def refresh_device_state(device: Device, now=None) -> None:  # noqa: ANN001
+    """Recompute effective access and the next transition without calling UniFi."""
+    now = now or utcnow()
+    schedule = load_schedule(device)
+    device.effective_access = effective_access(device.access_mode, schedule, now)
+    device.next_change_at = next_transition_for_mode(device.access_mode, schedule, now)
+    device.last_synced_at = now
+
+
 def _needs_apply(effective: str, last_applied: str | None, observed: bool | None) -> bool:
     if effective not in {"allowed", "blocked"}:
         return False
@@ -236,11 +245,8 @@ def apply_device_now(
     """Compute and apply a device's current effective state immediately."""
     dry_run = settings.dry_run if dry_run is None else dry_run
     now = utcnow()
-    schedule = load_schedule(device)
-    effective = effective_access(device.access_mode, schedule, now)
-    device.effective_access = effective
-    device.next_change_at = next_transition_for_mode(device.access_mode, schedule, now)
-    device.last_synced_at = now
+    refresh_device_state(device, now)
+    effective = device.effective_access or "ignored"
 
     if not _needs_apply(effective, device.last_applied_access, device.observed_blocked):
         return True, None

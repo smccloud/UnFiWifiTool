@@ -35,6 +35,10 @@ COPY --from=frontend /frontend/dist ./static
 RUN mkdir -p /data \
     && chown -R app:app /app /data
 
+# The database lives here. Declaring the volume also protects data when the
+# image is run directly with `docker run` (Docker creates an anonymous volume).
+VOLUME ["/data"]
+
 USER app
 
 ENV DATABASE_URL=sqlite:////data/unifi-wifi.db \

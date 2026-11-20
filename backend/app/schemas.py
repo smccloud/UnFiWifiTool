@@ -18,18 +18,29 @@ class ScheduleWindowIn(BaseModel):
     days: list[int] = Field(min_length=1)
     start: str
     end: str
+    # Optional for legacy payloads; validate_schedule derives it from kind.
+    action: Literal["allow", "block"] | None = None
+
+
+class ScheduleWindowOut(BaseModel):
+    days: list[int]
+    start: str
+    end: str
+    action: Literal["allow", "block"]
 
 
 class ScheduleIn(BaseModel):
-    kind: ScheduleKind = "allow_during"
+    default_access: Literal["allowed", "blocked"] | None = None
+    # Legacy clients may still send kind; validate_schedule converts it.
+    kind: ScheduleKind | None = None
     timezone: str = "UTC"
     windows: list[ScheduleWindowIn] = Field(min_length=1)
 
 
 class ScheduleOut(BaseModel):
-    kind: ScheduleKind
+    default_access: Literal["allowed", "blocked"]
     timezone: str
-    windows: list[ScheduleWindowIn]
+    windows: list[ScheduleWindowOut]
 
 
 class DeviceCreate(BaseModel):

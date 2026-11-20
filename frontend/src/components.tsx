@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Device, Schedule, ScheduleWindow } from "./types";
+import type { ThemePreference } from "./theme";
 import { DAY_NAMES, describeSchedule, errorMessage } from "./lib/format";
 
 const ACCESS_LABELS: Record<string, string> = {
@@ -19,6 +20,38 @@ export function AccessBadge({ mode, label }: { mode: string | null | undefined; 
 
 export function StatusDot({ ok }: { ok: boolean }) {
   return <span className={`status-dot ${ok ? "status-ok" : "status-bad"}`} aria-hidden="true" />;
+}
+
+const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; glyph: string }> = [
+  { value: "system", label: "System", glyph: "◐" },
+  { value: "light", label: "Light", glyph: "☀" },
+  { value: "dark", label: "Dark", glyph: "☾" },
+];
+
+export function ThemeSwitch({
+  preference,
+  onChange,
+}: {
+  preference: ThemePreference;
+  onChange: (preference: ThemePreference) => void;
+}) {
+  return (
+    <div className="theme-switch" role="group" aria-label="Color theme">
+      {THEME_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={preference === option.value ? "theme-option active" : "theme-option"}
+          aria-pressed={preference === option.value}
+          aria-label={`${option.label} theme`}
+          title={`${option.label} theme`}
+          onClick={() => onChange(option.value)}
+        >
+          <span aria-hidden="true">{option.glyph}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function StatCard({
@@ -144,26 +177,39 @@ function timezoneOptions(): string[] {
 
 const TIMEZONES = timezoneOptions();
 
-const PRESETS: Array<{ label: string; kind: Schedule["kind"]; windows: ScheduleWindow[] }> = [
+const PRESETS: Array<{
+  label: string;
+  defaultAccess: Schedule["default_access"];
+  windows: ScheduleWindow[];
+}> = [
   {
-    label: "Weekdays 9–5",
-    kind: "allow_during",
-    windows: [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00" }],
+    label: "Allow weekdays 9–5",
+    defaultAccess: "blocked",
+    windows: [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00", action: "allow" }],
   },
   {
-    label: "Every day 8–10pm",
-    kind: "allow_during",
-    windows: [{ days: [0, 1, 2, 3, 4, 5, 6], start: "20:00", end: "22:00" }],
+    label: "Allow evenings 8–10pm",
+    defaultAccess: "blocked",
+    windows: [
+      { days: [0, 1, 2, 3, 4, 5, 6], start: "20:00", end: "22:00", action: "allow" },
+    ],
   },
   {
-    label: "Overnight 10pm–7am",
-    kind: "allow_during",
-    windows: [{ days: [0, 1, 2, 3, 4, 5, 6], start: "22:00", end: "07:00" }],
+    label: "Block overnight 10pm–7am",
+    defaultAccess: "allowed",
+    windows: [
+      { days: [0, 1, 2, 3, 4, 5, 6], start: "22:00", end: "07:00", action: "block" },
+    ],
   },
   {
     label: "Block weekdays 9–5",
-    kind: "block_during",
-    windows: [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00" }],
+    defaultAccess: "allowed",
+    windows: [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00", action: "block" }],
+  },
+  {
+    label: "Weekend access",
+    defaultAccess: "blocked",
+    windows: [{ days: [5, 6], start: "08:00", end: "23:00", action: "allow" }],
   },
 ];
 
@@ -180,27 +226,33 @@ export function ScheduleEditor({
   onSave: (schedule: Schedule) => Promise<void>;
   onClear: () => Promise<void>;
 }) {
-  const [kind, setKind] = useState<Schedule["kind"]>(device.schedule?.kind ?? "allow_during");
+  const [defaultAccess, setDefaultAccess] = useState<Schedule["default_access"]>(
+    device.schedule?.default_access ?? "blocked",
+  );
   const [timezone, setTimezone] = useState(device.schedule?.timezone ?? defaultTimezone);
   const [windows, setWindows] = useState<ScheduleWindow[]>(
-    device.schedule?.windows ?? [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00" }],
+    device.schedule?.windows ?? [
+      { days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00", action: "allow" },
+    ],
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setKind(device.schedule?.kind ?? "allow_during");
+    setDefaultAccess(device.schedule?.default_access ?? "blocked");
     setTimezone(device.schedule?.timezone ?? defaultTimezone);
     setWindows(
-      device.schedule?.windows ?? [{ days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00" }],
+      device.schedule?.windows ?? [
+        { days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00", action: "allow" },
+      ],
     );
     setError("");
   }, [device.id, device.schedule, defaultTimezone]);
 
   const preview = useMemo(() => {
     if (!windows.length) return "Add at least one window.";
-    return describeSchedule({ kind, timezone, windows });
-  }, [kind, timezone, windows]);
+    return describeSchedule({ default_access: defaultAccess, timezone, windows });
+  }, [defaultAccess, timezone, windows]);
 
   function updateWindow(index: number, patch: Partial<ScheduleWindow>) {
     setWindows((current) =>
@@ -237,7 +289,7 @@ export function ScheduleEditor({
     }
     setSaving(true);
     try {
-      await onSave({ kind, timezone, windows });
+      await onSave({ default_access: defaultAccess, timezone, windows });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -269,8 +321,9 @@ export function ScheduleEditor({
         {device.schedule ? <span className="badge badge-scheduled">Active schedule</span> : null}
       </div>
       <p className="muted small">
-        The scheduler evaluates every {device.schedule ? "few seconds" : "30 seconds"} and applies
-        block or unblock transitions automatically. Timezone-aware, including overnight windows.
+        The scheduler evaluates every 30 seconds and applies block or unblock transitions
+        automatically. Windows can allow or block; block windows take priority. Timezone-aware,
+        including overnight windows.
       </p>
 
       <div className="preset-row">
@@ -281,7 +334,7 @@ export function ScheduleEditor({
             className="chip"
             disabled={disabled}
             onClick={() => {
-              setKind(preset.kind);
+              setDefaultAccess(preset.defaultAccess);
               setWindows(preset.windows.map((window) => ({ ...window, days: [...window.days] })));
             }}
           >
@@ -292,14 +345,16 @@ export function ScheduleEditor({
 
       <div className="form-grid two">
         <label>
-          <span>Schedule behaviour</span>
+          <span>Outside all windows</span>
           <select
-            value={kind}
+            value={defaultAccess}
             disabled={disabled}
-            onChange={(event) => setKind(event.target.value as Schedule["kind"])}
+            onChange={(event) =>
+              setDefaultAccess(event.target.value as Schedule["default_access"])
+            }
           >
-            <option value="allow_during">Allowed inside windows → blocked outside</option>
-            <option value="block_during">Blocked inside windows → allowed outside</option>
+            <option value="blocked">Blocked by default</option>
+            <option value="allowed">Allowed by default</option>
           </select>
         </label>
         <label>
@@ -321,6 +376,22 @@ export function ScheduleEditor({
       <div className="windows">
         {windows.map((window, index) => (
           <div className="window-row" key={index}>
+            <select
+              className={
+                window.action === "allow"
+                  ? "window-action action-allow"
+                  : "window-action action-block"
+              }
+              value={window.action}
+              disabled={disabled}
+              aria-label={`Window ${index + 1} action`}
+              onChange={(event) =>
+                updateWindow(index, { action: event.target.value as "allow" | "block" })
+              }
+            >
+              <option value="allow">Allow</option>
+              <option value="block">Block</option>
+            </select>
             <div className="day-picker" aria-label={`Window ${index + 1} days`}>
               {DAY_NAMES.map((day, dayIndex) => (
                 <button
@@ -370,7 +441,7 @@ export function ScheduleEditor({
         onClick={() =>
           setWindows((current) => [
             ...current,
-            { days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00" },
+            { days: [0, 1, 2, 3, 4], start: "09:00", end: "17:00", action: "allow" },
           ])
         }
       >

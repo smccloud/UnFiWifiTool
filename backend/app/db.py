@@ -91,7 +91,28 @@ def init_db() -> None:
     # Imported for side effects so all tables are registered on Base.metadata.
     from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=get_engine())
+    engine = get_engine()
+    Base.metadata.create_all(bind=engine)
+    _migrate_sqlite(engine)
+
+
+def _migrate_sqlite(engine: Engine) -> None:
+    """Apply tiny additive migrations for existing SQLite deployments.
+
+    ``create_all`` does not alter existing tables. Keep these migrations
+    idempotent and additive so container upgrades preserve data.
+    """
+    if not engine.url.drivername.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(devices)")
+        }
+        if columns and "schedule_default" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE devices ADD COLUMN schedule_default VARCHAR(16)"
+            )
 
 
 def dispose_engine() -> None:

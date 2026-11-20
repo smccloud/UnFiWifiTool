@@ -36,6 +36,8 @@ pipeline {
         IMAGE             = "unifi-wifi-tool:${BUILD_NUMBER}"
         AUTH_CONTAINER    = "unifi-wifi-ci-auth-${BUILD_NUMBER}"
         SECURE_CONTAINER  = "unifi-wifi-ci-secure-${BUILD_NUMBER}"
+        PERSIST_CONTAINER = "unifi-wifi-ci-persist-${BUILD_NUMBER}"
+        DATA_VOLUME       = "unifi-wifi-ci-data-${BUILD_NUMBER}"
         COMPOSE_PROJECT   = "unifi-wifi-ci-${BUILD_NUMBER}"
         DOCKER_NETWORK    = "${params.DOCKER_NETWORK ?: 'host'}"
         DOCKER_BUILDKIT   = "1"
@@ -318,6 +320,93 @@ PY
                 '''
             }
         }
+
+        stage('Data persistence') {
+            steps {
+                sh '''
+                    set -eu
+
+                    docker rm -f "$PERSIST_CONTAINER" >/dev/null 2>&1 || true
+                    docker volume rm "$DATA_VOLUME" >/dev/null 2>&1 || true
+
+                    start_persist_container() {
+                        docker run -d --name "$PERSIST_CONTAINER" \
+                            --network none \
+                            -v "$DATA_VOLUME:/data" \
+                            -e AUTH_DISABLED=true \
+                            -e SECRET_KEY=jenkins-persist-secret-key-0123456789 \
+                            -e SCHEDULER_ENABLED=false \
+                            -e UNIFI_HOST= \
+                            "$IMAGE" >/dev/null
+
+                        ready=0
+                        for i in $(seq 1 60); do
+                            if docker exec "$PERSIST_CONTAINER" python -c \
+                                "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/healthz', timeout=2)" \
+                                >/dev/null 2>&1; then
+                                ready=1
+                                break
+                            fi
+                            sleep 1
+                        done
+                        if [ "$ready" -ne 1 ]; then
+                            echo "ERROR: persistence container did not become healthy" >&2
+                            docker logs "$PERSIST_CONTAINER"
+                            exit 1
+                        fi
+                    }
+
+                    echo "=== Creating data in a fresh /data volume ==="
+                    start_persist_container
+                    db_url="$(docker exec "$PERSIST_CONTAINER" printenv DATABASE_URL)"
+                    [ "$db_url" = "sqlite:////data/unifi-wifi.db" ] || {
+                        echo "ERROR: unexpected DATABASE_URL: $db_url" >&2
+                        exit 1
+                    }
+                    docker exec "$PERSIST_CONTAINER" test -f /data/unifi-wifi.db
+
+                    docker exec -i "$PERSIST_CONTAINER" python - <<'PY'
+import json
+import urllib.request
+
+request = urllib.request.Request(
+    "http://127.0.0.1:8000/api/devices",
+    data=json.dumps({"mac": "aa:bb:cc:dd:ee:99", "label": "persistence-test"}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    assert response.getcode() == 201
+    created = json.loads(response.read())
+assert created["label"] == "persistence-test"
+print("created persistence-test device")
+PY
+
+                    docker stop "$PERSIST_CONTAINER" >/dev/null
+                    docker rm "$PERSIST_CONTAINER" >/dev/null
+
+                    echo "=== Replacing the container with the same /data volume ==="
+                    start_persist_container
+                    docker exec -i "$PERSIST_CONTAINER" python - <<'PY'
+import json
+import sys
+import urllib.request
+
+with urllib.request.urlopen("http://127.0.0.1:8000/api/devices", timeout=5) as response:
+    payload = json.loads(response.read())
+
+if not any(item.get("label") == "persistence-test" for item in payload["items"]):
+    print("ERROR: device did not survive container replacement", file=sys.stderr)
+    sys.exit(1)
+print("PERSISTENCE OK: /data/unifi-wifi.db survived container replacement")
+PY
+
+                    docker stop "$PERSIST_CONTAINER" >/dev/null
+                    docker rm "$PERSIST_CONTAINER" >/dev/null
+                    docker volume rm "$DATA_VOLUME" >/dev/null
+                '''
+            }
+        }
     }
 
     post {
@@ -325,7 +414,8 @@ PY
             junit allowEmptyResults: true, testResults: 'backend/test-results.xml'
             archiveArtifacts artifacts: 'image-inspect.json, smoke-health.json', allowEmptyArchive: true
             sh '''
-                docker rm -f "$AUTH_CONTAINER" "$SECURE_CONTAINER" >/dev/null 2>&1 || true
+                docker rm -f "$AUTH_CONTAINER" "$SECURE_CONTAINER" "$PERSIST_CONTAINER" >/dev/null 2>&1 || true
+                docker volume rm "$DATA_VOLUME" >/dev/null 2>&1 || true
                 docker volume rm "unifi-wifi-ci-node-modules-$BUILD_NUMBER" >/dev/null 2>&1 || true
                 docker rmi "$IMAGE" >/dev/null 2>&1 || true
                 rm -f smoke-cookies.txt smoke-login.json
@@ -337,6 +427,8 @@ PY
                 docker logs "$AUTH_CONTAINER" 2>&1 || true
                 echo "--- authenticated container logs ---"
                 docker logs "$SECURE_CONTAINER" 2>&1 || true
+                echo "--- persistence container logs ---"
+                docker logs "$PERSIST_CONTAINER" 2>&1 || true
             '''
         }
     }

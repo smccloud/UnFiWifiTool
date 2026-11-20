@@ -15,6 +15,7 @@ from app.schedule import (
     next_transition_for_mode,
     save_schedule,
     schedule_from_dict,
+    scheduled_access,
     validate_schedule,
 )
 
@@ -152,3 +153,85 @@ def test_save_load_clear_round_trip():
     assert loaded.windows[0].days == (1, 3)
     clear_schedule(device)
     assert load_schedule(device) is None
+
+
+def test_mixed_allow_and_block_windows_block_wins():
+    schedule = schedule_from_dict(
+        validate_schedule(
+            {
+                "default_access": "allowed",
+                "timezone": "UTC",
+                "windows": [
+                    {"days": [0], "start": "09:00", "end": "17:00", "action": "allow"},
+                    {"days": [0], "start": "12:00", "end": "13:00", "action": "block"},
+                ],
+            }
+        )
+    )
+    assert scheduled_access(schedule, at(MONDAY, 8)) == "allowed"  # default
+    assert scheduled_access(schedule, at(MONDAY, 10)) == "allowed"
+    assert scheduled_access(schedule, at(MONDAY, 12, 30)) == "blocked"  # block window wins
+    assert scheduled_access(schedule, at(MONDAY, 14)) == "allowed"
+    assert scheduled_access(schedule, at(MONDAY, 20)) == "allowed"  # default
+
+
+def test_mixed_windows_with_blocked_default():
+    schedule = schedule_from_dict(
+        validate_schedule(
+            {
+                "default_access": "blocked",
+                "timezone": "UTC",
+                "windows": [
+                    {"days": [0], "start": "09:00", "end": "17:00", "action": "allow"},
+                    {"days": [0], "start": "12:00", "end": "13:00", "action": "block"},
+                ],
+            }
+        )
+    )
+    assert scheduled_access(schedule, at(MONDAY, 8)) == "blocked"  # default
+    assert scheduled_access(schedule, at(MONDAY, 10)) == "allowed"
+    assert scheduled_access(schedule, at(MONDAY, 12, 30)) == "blocked"
+    assert scheduled_access(schedule, at(MONDAY, 18)) == "blocked"  # default
+
+
+def test_mixed_window_transitions():
+    schedule = schedule_from_dict(
+        validate_schedule(
+            {
+                "default_access": "blocked",
+                "timezone": "UTC",
+                "windows": [
+                    {"days": [0], "start": "09:00", "end": "17:00", "action": "allow"},
+                    {"days": [0], "start": "12:00", "end": "13:00", "action": "block"},
+                ],
+            }
+        )
+    )
+    assert next_transition(schedule, at(MONDAY, 11)) == at(MONDAY, 12)
+    assert next_transition(schedule, at(MONDAY, 12, 30)) == at(MONDAY, 13)
+    assert next_transition(schedule, at(MONDAY, 16)) == at(MONDAY, 17)
+
+
+def test_legacy_kind_conversion():
+    normalized = validate_schedule(
+        {
+            "kind": "block_during",
+            "timezone": "UTC",
+            "windows": [{"days": [0], "start": "09:00", "end": "17:00"}],
+        }
+    )
+    assert normalized["default_access"] == "allowed"
+    assert normalized["windows"][0]["action"] == "block"
+
+
+def test_legacy_stored_schedule_loads_with_new_model():
+    device = SimpleNamespace(
+        schedule_kind="block_during",
+        schedule_default=None,
+        schedule_timezone="UTC",
+        schedule_windows='[{"days":[0],"start":"09:00","end":"17:00"}]',
+    )
+    loaded = load_schedule(device)
+    assert loaded is not None
+    assert loaded.default_access == "allowed"
+    assert loaded.windows[0].action == "block"
