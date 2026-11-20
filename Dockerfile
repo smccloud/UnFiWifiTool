@@ -16,6 +16,8 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
+ARG DEBIAN_FRONTEND=noninteractive
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -23,11 +25,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Apply the available Debian security update for zlib1g.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app
 
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# pip and setuptools are build-time tools; the application does not use them at
+# runtime. Removing them also removes the stale vendored SBOM that Docker Scout
+# otherwise treats as installed packages.
+RUN python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y pip setuptools \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip* \
+              /usr/local/lib/python3.13/site-packages/setuptools* \
+              /usr/local/lib/python3.13/site-packages/pkg_resources \
+              /usr/local/lib/python3.13/site-packages/_distutils_hack \
+              /usr/local/lib/python3.13/site-packages/distutils-precedence.pth \
+              /usr/local/bin/pip*
 
 COPY backend/app ./app
 COPY VERSION ./VERSION
