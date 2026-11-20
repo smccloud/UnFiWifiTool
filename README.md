@@ -1,6 +1,6 @@
 # UniFi WiFi Access Manager
 
-[![Build Status](https://jenkins.smccloud.com/buildStatus/icon?job=UnFiWifiTool&style=plastic)](#)
+[![Build Status](https://jenkins.smccloud.com/buildStatus/icon?job=UniFiWifiTool&style=plastic)](#)
 
 A small, self-hosted Linux application for deciding which devices may use your
 UniFi WiFi — manually or on a weekly schedule — with a web UI, audit log, and
