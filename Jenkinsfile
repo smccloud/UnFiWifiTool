@@ -543,13 +543,30 @@ PY
                         printf '%s' "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USER" --password-stdin
                         trap 'docker logout >/dev/null 2>&1 || true' EXIT
 
-                        docker tag "$IMAGE" "$version_tag"
+                        push_tag() {
+                            tag="$1"
+                            if output="$(docker push "$tag" 2>&1)"; then
+                                printf '%s\n' "$output"
+                            elif printf '%s\n' "$output" | grep -q "immutability"; then
+                                echo "WARNING: $tag is immutable on Docker Hub; skipping update." >&2
+                            else
+                                printf '%s\n' "$output" >&2
+                                return 1
+                            fi
+                        }
+
+                        if docker manifest inspect "$version_tag" >/dev/null 2>&1; then
+                            echo "Version $version is already published as $version_tag; skipping version tag push."
+                            echo "Bump VERSION to publish a new release."
+                        else
+                            docker tag "$IMAGE" "$version_tag"
+                            push_tag "$version_tag"
+                        fi
+
                         docker tag "$IMAGE" "$latest_tag"
+                        push_tag "$latest_tag"
 
-                        docker push "$version_tag"
-                        docker push "$latest_tag"
-
-                        echo "Published $version_tag and $latest_tag"
+                        echo "Publish stage complete for $version_tag and $latest_tag"
                     '''
                 }
             }

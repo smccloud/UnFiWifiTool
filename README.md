@@ -268,6 +268,11 @@ credential ID with the
 `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID` parameters; disable
 publishing with `PUSH_TO_DOCKERHUB=false`.
 
+Existing version tags are not overwritten: if the tag for `VERSION` already
+exists on Docker Hub, that push is skipped and you must bump `VERSION` to
+publish a new release. Docker Hub immutable-tag rejections are reported as
+warnings instead of failing the build.
+
 Docker Scout always writes a SARIF vulnerability report and an SPDX SBOM.
 `SCOUT_FAIL_ON_SEVERITY` controls the build gate: `critical` (default),
 `critical,high`, or `none` for report-only mode. Critical-only is the default
