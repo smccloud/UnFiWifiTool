@@ -150,3 +150,10 @@ generate_vex \
   "apt" \
   "vulnerable_code_not_in_execute_path" \
   "The runtime image does not use apt or apt-key and has no keyring URI configured. Package management is only used during the image build."
+
+generate_vex \
+  "CVE-2011-4116" \
+  "perl-base" \
+  "perl" \
+  "vulnerable_code_not_in_execute_path" \
+  "The runtime image does not use Perl File::Temp; Perl is present only as a Debian base package and the application runs as Python."
