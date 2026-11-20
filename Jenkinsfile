@@ -45,7 +45,7 @@ pipeline {
         timestamps()
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '20'))
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     environment {
