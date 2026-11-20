@@ -5,14 +5,16 @@ This image is designed to run directly through unRAID's **Docker** tab
 
 ## 1. Use the published image
 
-The Jenkins pipeline publishes `smccloud/unifi-wifi-tool:0.1.0` to Docker Hub
-on successful `master` builds. The template already points at that image.
+The Jenkins pipeline publishes `smccloud/unifi-wifi-tool:latest` to Docker Hub
+on successful `master` builds, along with the version tag (currently `0.1.0`),
+build-number, and short-SHA tags. The template uses `latest` by default; pin a
+version tag such as `:0.1.0` if you prefer a fixed release.
 
 If you publish under a different namespace, change `<Repository>` in the XML.
 To build locally on the unRAID box instead:
 
 ```bash
-docker build -t smccloud/unifi-wifi-tool:0.1.0 .
+docker build -t smccloud/unifi-wifi-tool:latest .
 ```
 
 If you push your own image elsewhere, update `<Repository>` accordingly.
@@ -22,8 +24,8 @@ If you push your own image elsewhere, update `<Repository>` accordingly.
 1. Copy `unifi-wifi-tool.xml` to
    `/boot/config/plugins/dockerMan/templates-user/` (or add it through the
    unRAID template UI).
-2. If you are not using `smccloud/unifi-wifi-tool:0.1.0`, change
-   `<Repository>` in the XML to your image.
+2. If you are not using `smccloud/unifi-wifi-tool:latest`, change
+   `<Repository>` in the XML to your image or pinned version tag.
 3. In unRAID: **Docker → Add Container**, select the
    **UniFi-WiFi-Access-Manager** template.
 4. Set:
@@ -96,7 +98,7 @@ docker run -d \
   -e UNIFI_API_KEY='...' \
   -e UNIFI_USERNAME='unifi-service' \
   -e UNIFI_PASSWORD='...' \
-  smccloud/unifi-wifi-tool:0.1.0
+  smccloud/unifi-wifi-tool:latest
 ```
 
 On a normal Linux host, omit `--user 99:100` and point the volume at any
