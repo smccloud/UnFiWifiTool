@@ -49,7 +49,7 @@ pipeline {
     }
 
     environment {
-        IMAGE             = "unifi-wifi-tool:${BUILD_NUMBER}"
+        IMAGE             = "unifi-wifi-tool:ci"
         AUTH_CONTAINER    = "unifi-wifi-ci-auth-${BUILD_NUMBER}"
         SECURE_CONTAINER  = "unifi-wifi-ci-secure-${BUILD_NUMBER}"
         PERSIST_CONTAINER = "unifi-wifi-ci-persist-${BUILD_NUMBER}"
