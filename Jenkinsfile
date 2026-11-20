@@ -60,6 +60,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS_ID = "${params.DOCKERHUB_CREDENTIALS_ID ?: 'Docker'}"
         DOCKER_BUILDKIT   = "1"
         CI                = "true"
+        DOCKER_SCOUT_NO_CACHE = "true"
     }
 
     stages {
@@ -121,6 +122,51 @@ pipeline {
             post {
                 success {
                     archiveArtifacts artifacts: 'image-inspect.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Analyze image with Docker Scout') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_PASSWORD'
+                )]) {
+                    sh '''
+                        set -eu
+
+                        # Docker CLI discovers plugins from its plugin directory,
+                        # not from PATH. Install Scout there when it is missing.
+                        if ! docker scout version >/dev/null 2>&1; then
+                            scout_plugin_dir="${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins"
+                            mkdir -p "$scout_plugin_dir"
+                            curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b "$scout_plugin_dir"
+                        fi
+                        docker scout version
+
+                        printf '%s' "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        # Generate a vulnerability report and SBOM for the built image.
+                        docker scout cves "$IMAGE" \
+                            --format sarif \
+                            --output docker-scout.sarif
+                        docker scout sbom "$IMAGE" \
+                            --format spdx \
+                            --output docker-scout.sbom.json || true
+                        docker scout recommendations "$IMAGE" || true
+
+                        # Fail the build when critical or high severity CVEs are found.
+                        docker scout cves "$IMAGE" \
+                            --only-severity critical,high \
+                            --exit-code
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'docker-scout.sarif, docker-scout.sbom.json', allowEmptyArchive: true
                 }
             }
         }

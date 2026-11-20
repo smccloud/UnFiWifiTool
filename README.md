@@ -6,9 +6,6 @@ A small, self-hosted Linux application for deciding which devices may use your
 UniFi WiFi — manually or on a weekly schedule — with a web UI, audit log, and
 Docker deployment.
 
-> **Status: early scaffold.** The design is in [docs/DESIGN.md](docs/DESIGN.md).
-> Test against a non-production site before relying on it for access control.
-
 ## What it does
 
 - Builds a local inventory of WiFi clients (MAC, label, notes, SSID, IP, signal).
@@ -66,7 +63,7 @@ Docker Compose is optional. The image is designed to be run directly, including
 through unRAID's Docker Manager.
 
 ```bash
-docker pull smccloud/unifi-wifi-tool:0.4.0
+docker pull smccloud/unifi-wifi-tool:0.5.0
 
 mkdir -p /opt/unifi-wifi-tool
 docker run -d \
@@ -82,7 +79,7 @@ docker run -d \
   -e UNIFI_API_KEY='...' \
   -e UNIFI_USERNAME='unifi-service' \
   -e UNIFI_PASSWORD='...' \
-  smccloud/unifi-wifi-tool:0.4.0
+  smccloud/unifi-wifi-tool:0.5.0
 ```
 
 To build from source instead:
@@ -90,7 +87,7 @@ To build from source instead:
 ```bash
 git clone <this-repo> unifi-wifi-tool
 cd unifi-wifi-tool
-docker build -t smccloud/unifi-wifi-tool:0.4.0 .
+docker build -t smccloud/unifi-wifi-tool:0.5.0 .
 ```
 
 Open <http://localhost:8080> (or the host/IP where the container runs).
@@ -260,13 +257,13 @@ cd frontend && npm run build
 ## Docker build and CI
 
 ```bash
-docker build -t smccloud/unifi-wifi-tool:0.4.0 .
+docker build -t smccloud/unifi-wifi-tool:0.5.0 .
 ```
 
 The `Jenkinsfile` builds and tests the image, then publishes successful
 `master` builds to Docker Hub (`smccloud/unifi-wifi-tool` by default) using the
 Jenkins username/password credentials named **Docker**. Images are pushed as
-`:0.4.0` (the version in `VERSION`) and `:latest`. Override the repository or
+`:0.5.0` (the version in `VERSION`) and `:latest`. Override the repository or
 credential ID with the
 `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID` parameters; disable
 publishing with `PUSH_TO_DOCKERHUB=false`.
@@ -275,8 +272,10 @@ publishing with `PUSH_TO_DOCKERHUB=false`.
 2. runs backend tests in `python:3.13-slim` and publishes JUnit results,
 3. builds the frontend in `node:22-alpine`,
 4. builds the multi-stage image,
-5. validates `docker-compose.yml` when Compose is installed,
-6. boots the image twice with `--network none` and checks, via `docker exec`:
+5. scans the built image with Docker Scout for critical/high CVEs and archives
+   a SARIF report and SBOM,
+6. validates `docker-compose.yml` when Compose is installed,
+7. boots the image twice with `--network none` and checks, via `docker exec`:
    - `/api/healthz`,
    - the built SPA is served,
    - status endpoint,
@@ -287,14 +286,14 @@ publishing with `PUSH_TO_DOCKERHUB=false`.
    - a CSRF-authenticated device create returns 201,
    - the MIT license endpoint returns the license,
    - audit retention can be updated with a CSRF token,
-7. creates a device in a fresh `/data` volume, replaces the container, and
+8. creates a device in a fresh `/data` volume, replaces the container, and
    confirms the device is still present from the same database,
-8. on `master`, logs into Docker Hub with the `Docker` credential and pushes
+9. on `master`, logs into Docker Hub with the `Docker` credential and pushes
    the version and `latest` tags.
 
 ### Versioning
 
-The application version lives in [`VERSION`](VERSION) and is currently `0.4.0`.
+The application version lives in [`VERSION`](VERSION) and is currently `0.5.0`.
 The backend exposes it through `/api/auth/me`, `/api/system/status`, the health
 endpoint, and the UI footer/About panel. `frontend/package.json` and
 `.env.example`'s `IMAGE_VERSION` mirror it, and the backend test suite fails if
