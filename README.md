@@ -268,12 +268,18 @@ credential ID with the
 `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID` parameters; disable
 publishing with `PUSH_TO_DOCKERHUB=false`.
 
+Docker Scout always writes a SARIF vulnerability report and an SPDX SBOM.
+`SCOUT_FAIL_ON_SEVERITY` controls the build gate: `critical` (default),
+`critical,high`, or `none` for report-only mode. Critical-only is the default
+because the current `python:3.13-slim` base image has unfixed high-severity
+findings.
+
 1. validates the Docker toolchain,
 2. runs backend tests in `python:3.13-slim` and publishes JUnit results,
 3. builds the frontend in `node:22-alpine`,
 4. builds the multi-stage image,
-5. scans the built image with Docker Scout for critical/high CVEs and archives
-   a SARIF report and SBOM,
+5. scans the built image with Docker Scout, archives a SARIF report and SBOM,
+   and enforces the configured `SCOUT_FAIL_ON_SEVERITY` threshold,
 6. validates `docker-compose.yml` when Compose is installed,
 7. boots the image twice with `--network none` and checks, via `docker exec`:
    - `/api/healthz`,

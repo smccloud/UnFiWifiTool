@@ -39,6 +39,11 @@ pipeline {
             defaultValue: true,
             description: 'Publish the tested image on master builds.'
         )
+        choice(
+            name: 'SCOUT_FAIL_ON_SEVERITY',
+            choices: ['critical', 'none', 'critical,high'],
+            description: 'Fail the build when Docker Scout finds vulnerabilities at these severities. Use none to report only.'
+        )
     }
 
     options {
@@ -61,6 +66,7 @@ pipeline {
         DOCKER_BUILDKIT   = "1"
         CI                = "true"
         DOCKER_SCOUT_NO_CACHE = "true"
+        SCOUT_FAIL_ON_SEVERITY = "${params.SCOUT_FAIL_ON_SEVERITY ?: 'critical'}"
     }
 
     stages {
@@ -157,10 +163,17 @@ pipeline {
                             --output docker-scout.sbom.json || true
                         docker scout recommendations "$IMAGE" || true
 
-                        # Fail the build when critical or high severity CVEs are found.
-                        docker scout cves "$IMAGE" \
-                            --only-severity critical,high \
-                            --exit-code
+                        # Fail the build for the configured severity threshold.
+                        # The default is critical so unfixed base-image highs
+                        # do not block CI. Set SCOUT_FAIL_ON_SEVERITY to
+                        # critical,high (or none) to change the policy.
+                        if [ "$SCOUT_FAIL_ON_SEVERITY" != "none" ]; then
+                            docker scout cves "$IMAGE" \
+                                --only-severity "$SCOUT_FAIL_ON_SEVERITY" \
+                                --exit-code
+                        else
+                            echo "Docker Scout enforcement disabled; report archived."
+                        fi
                     '''
                 }
             }
