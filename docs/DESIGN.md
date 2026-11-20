@@ -340,9 +340,12 @@ plain-English preview. Block windows are evaluated before allow windows.
   Jenkins pipeline verifies persistence across container replacement.
   The database is always `/data/unifi-wifi.db` unless `DATABASE_URL` is
   overridden.
+- The application version is read from the repo-root `VERSION` file (mirrored
+  in `frontend/package.json` and `IMAGE_VERSION`) and exposed by the API/UI.
 - Jenkins publishes successful `master` builds to Docker Hub as
-  `smccloud/unifi-wifi-tool:latest` (plus build-number and short-SHA tags)
-  using the Jenkins credentials named `Docker`.
+  `smccloud/unifi-wifi-tool:<version>` (currently `0.1.0`), plus `latest`,
+  build-number, and short-SHA tags, using the Jenkins credentials named
+  `Docker`.
 - On unRAID, running as `--user 99:100` matches the usual appdata ownership;
   the image itself also has a non-root `app` user.
 - Startup applies additive SQLite migrations (for example, adding

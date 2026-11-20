@@ -5,7 +5,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import __version__, audit
 from app.auth import csrf_guard, require_user
 from app.config import get_settings
 from app.db import get_db
@@ -84,7 +84,7 @@ def status(
 
     return StatusOut(
         app_name=settings.app_name,
-        version="0.1.0",
+        version=__version__,
         auth_disabled=settings.auth_disabled,
         timezone=settings.app_timezone,
         controller=controller,

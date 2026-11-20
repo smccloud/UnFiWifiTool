@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app import __version__
 from app.config import Settings, get_settings
 from app.db import dispose_engine, get_session_factory, init_db
 from app.reconcile import SyncBusy, run_sync
@@ -104,7 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title=settings.app_name,
-        version="0.1.0",
+        version=__version__,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         redoc_url=None,
@@ -143,7 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/healthz", include_in_schema=False)
     def healthz():
-        return {"status": "ok", "time": utcnow().isoformat()}
+        return {"status": "ok", "version": __version__, "time": utcnow().isoformat()}
 
     def _license_text() -> str:
         candidates = []

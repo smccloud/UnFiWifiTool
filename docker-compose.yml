@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: unifi-wifi-tool:local
+    image: smccloud/unifi-wifi-tool:${IMAGE_VERSION:-0.1.0}
     container_name: unifi-wifi-tool
     restart: unless-stopped
     init: true

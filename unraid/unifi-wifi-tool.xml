@@ -2,7 +2,7 @@
 <Container version="2">
   <Name>UniFi-WiFi-Access-Manager</Name>
   <!-- Change this if you publish under a different Docker Hub namespace. -->
-  <Repository>smccloud/unifi-wifi-tool:latest</Repository>
+  <Repository>smccloud/unifi-wifi-tool:0.1.0</Repository>
   <Registry>https://hub.docker.com/r/smccloud/unifi-wifi-tool</Registry>
   <Network>bridge</Network>
   <MyIP/>

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import __version__, audit
 from app.auth import (
     LoginRateLimiter,
     clear_session,
@@ -85,5 +85,5 @@ def me(request: Request, user: str = Depends(require_user)):
         csrf_token=csrf,
         auth_disabled=settings.auth_disabled,
         app_name=settings.app_name,
-        version="0.1.0",
+        version=__version__,
     )

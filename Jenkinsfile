@@ -470,7 +470,14 @@ PY
                             exit 1
                         }
 
+                        version="$(tr -d '[:space:]' < VERSION)"
+                        test -n "$version" || {
+                            echo "ERROR: VERSION is empty" >&2
+                            exit 1
+                        }
+
                         short_sha="$(printf '%s' "${GIT_COMMIT:-$BUILD_NUMBER}" | cut -c1-12)"
+                        version_tag="$DOCKERHUB_REPOSITORY:$version"
                         build_tag="$DOCKERHUB_REPOSITORY:$BUILD_NUMBER"
                         sha_tag="$DOCKERHUB_REPOSITORY:$short_sha"
                         latest_tag="$DOCKERHUB_REPOSITORY:latest"
@@ -478,15 +485,17 @@ PY
                         printf '%s' "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USER" --password-stdin
                         trap 'docker logout >/dev/null 2>&1 || true' EXIT
 
+                        docker tag "$IMAGE" "$version_tag"
                         docker tag "$IMAGE" "$build_tag"
                         docker tag "$IMAGE" "$sha_tag"
                         docker tag "$IMAGE" "$latest_tag"
 
+                        docker push "$version_tag"
                         docker push "$build_tag"
                         docker push "$sha_tag"
                         docker push "$latest_tag"
 
-                        echo "Published $build_tag, $sha_tag, $latest_tag"
+                        echo "Published $version_tag, $build_tag, $sha_tag, $latest_tag"
                     '''
                 }
             }
