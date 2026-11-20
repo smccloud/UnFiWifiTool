@@ -1,6 +1,6 @@
 # UniFi WiFi Access Manager
 
-[![Build Status](https://jenkins.smccloud.com/buildStatus/icon?job=UnFiWifiTool&style=plastic)](https://jenkins.smccloud.com/job/UnFiWifiTool/)
+![Build Status](https://jenkins.smccloud.com/buildStatus/icon?job=UnFiWifiTool&style=plastic)
 
 A small, self-hosted Linux application for deciding which devices may use your
 UniFi WiFi — manually or on a weekly schedule — with a web UI, audit log, and
@@ -255,8 +255,6 @@ cd frontend && npm run build
 ```bash
 docker build -t unifi-wifi-tool .
 ```
-
-Jenkins job: **[UnFiWifiTool](https://jenkins.smccloud.com/job/UnFiWifiTool/)**
 
 The `Jenkinsfile` builds and tests the image without pushing it:
 
