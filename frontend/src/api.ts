@@ -1,9 +1,11 @@
 import type {
   AuditList,
+  AuditPurgeResult,
   ClientList,
   Device,
   DeviceList,
   EditableAccessMode,
+  LicenseInfo,
   Me,
   Schedule,
   Status,
@@ -156,4 +158,15 @@ export const api = {
     request<AuditList>(`/api/audit${query(params)}`),
 
   wifi: () => request<WifiNetwork[]>("/api/wifi"),
+
+  license: () => request<LicenseInfo>("/api/license"),
+
+  setAuditRetention: (days: number) =>
+    request<AuditPurgeResult>("/api/system/audit-retention", {
+      method: "PUT",
+      body: JSON.stringify({ days }),
+    }),
+
+  purgeAudit: () =>
+    request<AuditPurgeResult>("/api/system/audit-purge", { method: "POST" }),
 };

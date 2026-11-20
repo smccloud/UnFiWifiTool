@@ -30,6 +30,7 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
+COPY LICENSE ./LICENSE
 COPY --from=frontend /frontend/dist ./static
 
 RUN mkdir -p /data \
@@ -42,7 +43,8 @@ VOLUME ["/data"]
 USER app
 
 ENV DATABASE_URL=sqlite:////data/unifi-wifi.db \
-    STATIC_DIR=/app/static
+    STATIC_DIR=/app/static \
+    LICENSE_FILE=/app/LICENSE
 
 EXPOSE 8000
 

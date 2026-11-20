@@ -37,6 +37,7 @@
   <Config Name="APP_TIMEZONE" Target="APP_TIMEZONE" Default="UTC" Mode="" Description="Default schedule timezone (IANA name)" Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>
   <Config Name="AUTO_APPLY" Target="AUTO_APPLY" Default="true" Mode="" Description="Apply desired states and schedules automatically" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="DRY_RUN" Target="DRY_RUN" Default="false" Mode="" Description="Log intended controller calls without sending them" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="AUDIT_RETENTION_DAYS" Target="AUDIT_RETENTION_DAYS" Default="0" Mode="" Description="Days to keep audit entries; 0 = forever" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
   <Config Name="SCHEDULER_ENABLED" Target="SCHEDULER_ENABLED" Default="true" Mode="" Description="Run the background schedule/reconcile loop" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="SCHEDULER_INTERVAL_SECONDS" Target="SCHEDULER_INTERVAL_SECONDS" Default="30" Mode="" Description="Schedule evaluation interval" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
   <Config Name="DISCOVERY_ENABLED" Target="DISCOVERY_ENABLED" Default="true" Mode="" Description="Import connected clients as unmanaged devices" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>

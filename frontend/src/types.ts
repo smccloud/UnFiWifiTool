@@ -130,6 +130,23 @@ export interface Counts {
   connected: number;
 }
 
+export interface AuditPurgeResult {
+  retention_days: number;
+  deleted: number;
+  cutoff: string | null;
+  ran: boolean;
+}
+
+export interface AuditInfo {
+  retention_days: number;
+  last_purge: {
+    at?: string;
+    deleted?: number;
+    retentionDays?: number;
+    cutoff?: string;
+  } | null;
+}
+
 export interface Status {
   app_name: string;
   version: string;
@@ -138,6 +155,7 @@ export interface Status {
   controller: ControllerInfo;
   enforcement: EnforcementInfo;
   counts: Counts;
+  audit: AuditInfo;
   last_sync: SyncSummary | null;
   security_note: string | null;
 }
@@ -156,4 +174,10 @@ export interface Me {
   auth_disabled: boolean;
   app_name: string;
   version: string;
+}
+
+export interface LicenseInfo {
+  name: string;
+  spdx: string;
+  text: string;
 }

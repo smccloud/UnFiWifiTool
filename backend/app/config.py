@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./data/unifi-wifi.db"
     static_dir: str = "static"
+    license_file: str = ""
 
     # --- App auth ---------------------------------------------------------
     secret_key: str = ""
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
     discovery_enabled: bool = True
     auto_apply: bool = True
     dry_run: bool = False
+    audit_retention_days: int = Field(default=0, ge=0, le=36500)
     scheduler_enabled: bool = True
     scheduler_interval_seconds: int = Field(default=30, ge=5, le=3600)
     enable_ssid_allowlist: bool = False

@@ -15,7 +15,7 @@ Docker deployment.
   in the same weekly schedule. Block windows win over allow windows.
 - Timezone-aware, with overnight windows and a configurable fallback state.
 - Applies schedule transitions automatically in the background.
-- Keeps an append-only audit log of every login, change, block, and unblock.
+- Keeps an audit log of every login, change, block, and unblock, with configurable retention.
 - Includes light, dark, and follow-system themes.
 - Runs as a single non-root container with SQLite in `/data`.
 
@@ -37,6 +37,9 @@ For true "only these MACs may join" enforcement, use the per-SSID MAC filter
 (Network 10+) or RADIUS MAC authentication. Client block is a per-device
 denylist; it is immediate and non-disruptive, but a brand-new device can
 associate before it is blocked.
+
+This project is not affiliated with or endorsed by Ubiquiti Inc. UniFi is a
+trademark of Ubiquiti Inc.
 
 ## Quick start
 
@@ -71,6 +74,8 @@ Open <http://localhost:8080> (or the host/IP where the container runs).
   [unraid/unifi-wifi-tool.xml](unraid/unifi-wifi-tool.xml).
 - **Compose (optional):** `cp .env.example .env`, edit it, then
   `docker compose up -d --build`.
+- **TLS/reverse proxy:** set `COOKIE_SECURE=true` and, behind a trusted proxy,
+  `TRUST_PROXY=true`.
 
 ### unRAID notes
 
@@ -83,6 +88,9 @@ Use a bind mount for `/data`:
 The template runs the container as `99:100` (unRAID `nobody:users`). Prepare the
 directory with `chown -R 99:100 /mnt/user/appdata/unifi-wifi-tool` before the
 first start, or adjust the UID/GID in the template's Extra Parameters.
+
+The template's `Repository` value is a placeholder. Replace it with the registry
+path of your built image before installing the template.
 
 ### Data persistence and upgrades
 
@@ -99,7 +107,8 @@ that path. `docker compose down` keeps volumes; `docker compose down -v`
 deletes them. Removing a container in the unRAID Docker UI does **not** remove
 the appdata directory.
 
-For a consistent backup while the app is running:
+Before upgrading, take a backup. For a consistent backup while the app is
+running:
 
 ```bash
 docker exec unifi-wifi-tool python -c \
@@ -108,7 +117,8 @@ docker cp unifi-wifi-tool:/tmp/backup.db ./unifi-wifi-$(date +%F).db
 ```
 
 The Jenkins pipeline also creates a device, replaces the container, and verifies
-the device is still present from the same `/data` volume.
+the device is still present from the same `/data` volume. Schema changes are
+additive; an existing database is migrated automatically on startup.
 
 ### Controller setup
 
@@ -170,6 +180,26 @@ each transition in the audit log.
 Use the theme switch in the top bar to choose **System**, **Light**, or **Dark**.
 The choice is stored in the browser and follows OS changes while set to System.
 
+## Audit retention
+
+The audit log keeps login, access-change, block, and unblock history. By
+default it is kept forever. Set a retention period in **Settings → Audit
+retention** or with `AUDIT_RETENTION_DAYS`:
+
+- `0` — keep every entry forever.
+- `N` — delete entries older than `N` days (UTC).
+- The UI setting is stored in SQLite, survives upgrades, and overrides the
+  environment variable at runtime.
+- Automatic cleanup runs at most once per day while the scheduler is enabled.
+- **Run cleanup now** deletes immediately using the saved retention value.
+- Each purge is recorded as an `audit_purged` entry, and retention changes are
+  recorded as `audit_retention_changed`.
+- If the scheduler is disabled, automatic cleanup does not run; use the button
+  or enable the scheduler.
+
+This is the one intentional exception to the append-only audit log: old entries
+are removed only according to the configured retention policy.
+
 ### Dry run first
 
 Set `DRY_RUN=true` to log intended block/unblock calls without sending them.
@@ -224,6 +254,8 @@ The `Jenkinsfile` builds and tests the image without pushing it:
    - login returns a CSRF token,
    - mutations without CSRF return 403,
    - a CSRF-authenticated device create returns 201,
+   - the MIT license endpoint returns the license,
+   - audit retention can be updated with a CSRF token,
 7. creates a device in a fresh `/data` volume, replaces the container, and
    confirms the device is still present from the same database.
 
@@ -246,7 +278,8 @@ restricted/nested CI agents; set it to `default` for stricter build isolation.
 | `DISCOVERY_ENABLED` | `true` | Import connected clients as unmanaged. |
 | `AUTO_APPLY` | `true` | Apply desired states/schedules automatically. |
 | `DRY_RUN` | `false` | Log calls without sending them. |
-| `SCHEDULER_ENABLED` | `true` | Background reconciliation loop. |
+| `AUDIT_RETENTION_DAYS` | `0` | Days to keep audit entries; `0` = forever. UI override available. |
+| `SCHEDULER_ENABLED` | `true` | Background reconciliation and retention loop. |
 | `SCHEDULER_INTERVAL_SECONDS` | `30` | Transition check interval. |
 | `ENABLE_SSID_ALLOWLIST` | `false` | Experimental per-SSID MAC filter writes. |
 
@@ -278,4 +311,5 @@ failure modes, and a real-controller verification checklist.
 
 ## License
 
-No license has been chosen yet. Add one before distributing.
+MIT. See [LICENSE](LICENSE). The license is also shown in the UI under
+**Settings → About** and is served at `/LICENSE`.

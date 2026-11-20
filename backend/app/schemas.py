@@ -172,6 +172,22 @@ class Counts(BaseModel):
     connected: int
 
 
+class AuditInfo(BaseModel):
+    retention_days: int
+    last_purge: dict | None = None
+
+
+class AuditRetentionUpdate(BaseModel):
+    days: int = Field(ge=0, le=36500)
+
+
+class AuditPurgeOut(BaseModel):
+    retention_days: int
+    deleted: int
+    cutoff: datetime | None = None
+    ran: bool
+
+
 class StatusOut(BaseModel):
     app_name: str
     version: str
@@ -180,6 +196,7 @@ class StatusOut(BaseModel):
     controller: ControllerInfo
     enforcement: dict
     counts: Counts
+    audit: AuditInfo
     last_sync: SyncSummaryOut | None = None
     security_note: str | None = None
 

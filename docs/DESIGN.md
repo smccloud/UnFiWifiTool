@@ -162,8 +162,9 @@ so both mechanisms can coexist.
 | `app/unifi/classic.py` | Login, CSRF rotation, `/stat/sta`, `/cmd/stamgr`. |
 | `app/unifi/service.py` | Capability detection and high-level operations. |
 | `app/reconcile.py` | Discovery, drift detection, apply/audit, dry-run. |
-| `app/routes/*` | JSON API. |
-| `app/main.py` | Lifespan, scheduler task, security headers, SPA serving. |
+| `app/retention.py` | Audit retention settings, purge, and daily scheduling. |
+| `app/routes/*` | JSON API for auth, devices, clients, audit, and system settings. |
+| `app/main.py` | Lifespan, scheduler task, security headers, SPA and license serving. |
 
 ### Data model
 
@@ -181,12 +182,14 @@ so both mechanisms can coexist.
 
 `audit_log`
 
-Append-only: timestamp, actor, action, target MAC, result, JSON detail,
-request ID. Secrets are never recorded.
+Append-only except for configured retention: timestamp, actor, action, target
+MAC, result, JSON detail, request ID. Secrets are never recorded. Purging and
+retention changes are themselves audited.
 
 `settings`
 
-Small key/value store for runtime facts such as the last sync summary.
+Small key/value store for runtime facts: last sync summary, the runtime audit
+retention override, and the last retention purge (timestamp, count, cutoff).
 
 ## 6. Reconciliation
 
@@ -220,6 +223,21 @@ The apply rule is intentionally conservative:
 Concurrent syncs are rejected with HTTP 409. Dry-run mode records intended
 actions as `dry_run` audit entries without calling the controller.
 
+### Audit retention
+
+The audit log is append-only by application behaviour, with one explicit
+administrative exception: retention. A retention period of `0` keeps entries
+forever (the default). A positive value deletes rows older than that many days
+(UTC). The runtime value is stored in the `settings` table and overrides the
+`AUDIT_RETENTION_DAYS` environment variable.
+
+- Automatic cleanup runs at most once per 24 hours from the scheduler.
+- The UI can save a new retention value or run cleanup immediately.
+- Purging records an `audit_purged` entry; changing retention records an
+  `audit_retention_changed` entry.
+- The last cleanup timestamp and deleted count are stored in `last_audit_purge`
+  and shown in the UI.
+
 ## 7. HTTP API
 
 | Method | Path | Purpose |
@@ -230,6 +248,10 @@ actions as `dry_run` audit entries without calling the controller.
 | GET | `/api/system/status` | Capabilities, counts, enforcement settings, last sync. |
 | POST | `/api/system/sync` | Run discovery + reconciliation. |
 | POST | `/api/system/test` | Force capability re-detection. |
+| PUT | `/api/system/audit-retention` | Set runtime audit retention and purge once. |
+| POST | `/api/system/audit-purge` | Run audit retention cleanup immediately. |
+| GET | `/api/license` | License metadata and full text. |
+| GET | `/LICENSE` | Plain-text MIT license. |
 | GET | `/api/devices` | Search/filter inventory. |
 | POST | `/api/devices` | Add a device by MAC. |
 | GET/PATCH/DELETE | `/api/devices/{id}` | Read, edit, or remove a device. |
@@ -254,7 +276,11 @@ Five views:
   allow/block or add-to-inventory.
 - **Audit log** — filter by action, result, or MAC.
 - **Settings** — controller capabilities, SSID list/filter state, enforcement
-  settings, security notes.
+  settings, audit retention controls, security notes, and an About/license
+  section with the full MIT text.
+
+The About section also links to `/LICENSE`; the backend serves the same file at
+`/LICENSE` (plain text) and `/api/license` (JSON).
 
 A theme switch in the top bar offers System, Light, and Dark. The preference is
 stored in `localStorage`; System follows `prefers-color-scheme` live. A small
@@ -278,10 +304,14 @@ plain-English preview. Block windows are evaluated before allow windows.
   `UNIFI_TLS_INSECURE` is an explicit, logged opt-out.
 - Security headers include CSP, `X-Frame-Options: DENY`, `nosniff`, and HSTS
   when cookies are marked secure.
-- Container runs as a non-root user with `no-new-privileges` and all Linux
-  capabilities dropped in Compose.
+- Container runs as a non-root user. Compose also applies
+  `no-new-privileges` and drops all Linux capabilities; unRAID uses `--user
+  99:100` to match appdata ownership.
 - API key inherits the creating UniFi admin's role. Use a dedicated, least-
   privileged local admin, ideally with a key expiry.
+- Audit retention deletes historical records, but deletions are bounded by the
+  configured age and are recorded in the audit log. Back up the database before
+  shortening a retention period.
 
 ## 10. Failure handling
 
@@ -296,15 +326,18 @@ plain-English preview. Block windows are evaluated before allow windows.
 | Corrupt schedule | Fails closed to `blocked` and records an error on the device. |
 | Sync overlap | Manual sync returns 409; background run is skipped. |
 | Partial failure | Per-device errors are recorded; other devices still reconcile. |
+| Retention purge failure | Logged; the scheduler continues and retries on the next cycle. |
+| Scheduler disabled | Automatic sync and retention do not run; manual Sync/Purge still work. |
 
 ## 11. Deployment
 
 - Multi-stage Docker build: Node builds the SPA; Python runtime serves API and
   static files.
-- Designed for direct `docker run` and unRAID Docker Manager. Compose is
-  optional.
+- Designed for direct `docker run` and unRAID Docker Manager (template in
+  `unraid/unifi-wifi-tool.xml`). Compose is optional.
 - `/data` is a declared volume. Persist it with a bind mount on unRAID
-  (`/mnt/user/appdata/unifi-wifi-tool:/data`) or a named volume elsewhere.
+  (`/mnt/user/appdata/unifi-wifi-tool:/data`) or a named volume elsewhere. The
+  Jenkins pipeline verifies persistence across container replacement.
   The database is always `/data/unifi-wifi.db` unless `DATABASE_URL` is
   overridden.
 - On unRAID, running as `--user 99:100` matches the usual appdata ownership;
@@ -312,6 +345,8 @@ plain-English preview. Block windows are evaluated before allow windows.
 - Startup applies additive SQLite migrations (for example, adding
   `schedule_default`) so an existing database survives image upgrades.
 - Health check: `GET /api/healthz`.
+- The MIT license is copied into the image and served at `/LICENSE` and
+  `/api/license`; the UI shows it under Settings → About.
 - Reverse proxy is optional; terminate TLS at Caddy/Traefik/nginx and set
   `COOKIE_SECURE=true`.
 - One replica only: the scheduler and SQLite are not designed for horizontal
@@ -330,6 +365,7 @@ plain-English preview. Block windows are evaluated before allow windows.
 6. **Prometheus metrics** and structured JSON logging.
 7. **TLS certificate pinning** for self-signed consoles.
 8. **Backup/restore** of the SQLite database and schedules.
+9. **Audit export/forwarding** (CSV/syslog/webhook) before retention purges.
 
 ## 13. Verification checklist for a real controller
 
@@ -349,3 +385,7 @@ Before relying on enforcement, verify:
 - [ ] The container survives a restart with the SQLite volume intact.
 - [ ] Removing and recreating the container with the same `/data` mount keeps
       the device inventory, schedules, and audit log.
+- [ ] Setting a short audit retention removes only entries older than the
+      cutoff; setting `0` stops automatic deletion.
+- [ ] `/api/license` and `/LICENSE` return the MIT license, and Settings →
+      About shows the same text.

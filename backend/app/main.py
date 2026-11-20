@@ -8,13 +8,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import Settings, get_settings
 from app.db import dispose_engine, get_session_factory, init_db
 from app.reconcile import SyncBusy, run_sync
+from app.retention import purge_if_due
 from app.routes import audit, auth, clients, devices, system
 from app.timeutil import utcnow
 from app.unifi.errors import UniFiError
@@ -26,15 +27,30 @@ logger = logging.getLogger("unifi_wifi_tool")
 def _sync_once(service: UniFiService, settings: Settings) -> None:
     session = get_session_factory()()
     try:
-        summary = run_sync(session, service, settings, actor="scheduler")
-        if summary.applied or summary.errors:
-            logger.info(
-                "sync: discovered=%s updated=%s applied=%s errors=%s",
-                summary.discovered,
-                summary.updated,
-                summary.applied,
-                len(summary.errors),
-            )
+        try:
+            summary = run_sync(session, service, settings, actor="scheduler")
+            if summary.applied or summary.errors:
+                logger.info(
+                    "sync: discovered=%s updated=%s applied=%s errors=%s",
+                    summary.discovered,
+                    summary.updated,
+                    summary.applied,
+                    len(summary.errors),
+                )
+        except SyncBusy:
+            session.rollback()
+            logger.info("background sync skipped: another sync is running")
+        except Exception:  # noqa: BLE001 - keep the scheduler alive
+            session.rollback()
+            logger.exception("background sync failed")
+
+        # Retention is independent of UniFi availability.
+        try:
+            purge = purge_if_due(session)
+            if purge and purge.deleted:
+                logger.info("audit retention: deleted=%s old entries", purge.deleted)
+        except Exception:  # noqa: BLE001 - retention must not stop the scheduler
+            logger.exception("audit retention purge failed")
     finally:
         session.close()
 
@@ -128,6 +144,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/healthz", include_in_schema=False)
     def healthz():
         return {"status": "ok", "time": utcnow().isoformat()}
+
+    def _license_text() -> str:
+        candidates = []
+        if settings.license_file:
+            candidates.append(Path(settings.license_file))
+        candidates.extend(
+            [
+                Path(__file__).resolve().parents[2] / "LICENSE",
+                Path("/app/LICENSE"),
+            ]
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate.read_text(encoding="utf-8")
+        raise HTTPException(status_code=404, detail="LICENSE file not found")
+
+    @app.get("/api/license", include_in_schema=False)
+    def license_info():
+        return {"name": "MIT License", "spdx": "MIT", "text": _license_text()}
+
+    @app.get("/LICENSE", include_in_schema=False)
+    def license_text():
+        return PlainTextResponse(_license_text())
 
     app.include_router(auth.router)
     app.include_router(devices.router)

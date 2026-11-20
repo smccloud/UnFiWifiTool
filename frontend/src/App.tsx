@@ -159,6 +159,9 @@ export default function App() {
           <div className="muted small">Signed in as</div>
           <strong>{me.username}</strong>
           <div className="muted small">v{me.version}</div>
+          <button className="license-link" onClick={() => setPage("settings")}>
+            MIT License
+          </button>
         </div>
       </aside>
 
@@ -307,6 +310,13 @@ function LoginPage({
         <button className="button button-primary button-wide" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        <p className="login-license muted small">
+          Released under the{" "}
+          <a href="/LICENSE" target="_blank" rel="noreferrer">
+            MIT License
+          </a>
+          .
+        </p>
       </form>
     </div>
   );

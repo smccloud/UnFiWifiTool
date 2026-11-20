@@ -24,6 +24,7 @@ import type {
   Client,
   Device,
   EditableAccessMode,
+  LicenseInfo,
   Schedule,
   Status,
   WifiNetwork,
@@ -1038,6 +1039,8 @@ export function AuditPage({ refreshKey }: { refreshKey: number }) {
               <option value="device_removed">Device removed</option>
               <option value="sync">Sync</option>
               <option value="login">Login</option>
+              <option value="audit_retention_changed">Retention changed</option>
+              <option value="audit_purged">Audit purged</option>
               <option value="dry_run">Dry run</option>
             </select>
             <select
@@ -1144,6 +1147,30 @@ export function SettingsPage({
   const [testing, setTesting] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
+  const [licenseError, setLicenseError] = useState("");
+  const [retentionDays, setRetentionDays] = useState(0);
+  const [retentionBusy, setRetentionBusy] = useState(false);
+  const [retentionNotice, setRetentionNotice] = useState("");
+  const [retentionError, setRetentionError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .license()
+      .then((data) => {
+        if (!cancelled) {
+          setLicense(data);
+          setLicenseError("");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setLicenseError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1162,6 +1189,10 @@ export function SettingsPage({
       cancelled = true;
     };
   }, [status?.controller.checked_at]);
+
+  useEffect(() => {
+    if (status) setRetentionDays(status.audit.retention_days);
+  }, [status?.audit.retention_days]);
 
   if (!status) {
     return <Spinner label="Loading settings" />;
@@ -1182,7 +1213,42 @@ export function SettingsPage({
     }
   }
 
+  async function saveRetention() {
+    setRetentionBusy(true);
+    setRetentionError("");
+    setRetentionNotice("");
+    try {
+      const result = await api.setAuditRetention(retentionDays);
+      setRetentionNotice(
+        result.retention_days === 0
+          ? "Audit retention disabled; entries are kept forever."
+          : `Retention set to ${result.retention_days} days and removed ${result.deleted} old entries.`,
+      );
+      onRefreshStatus();
+    } catch (err) {
+      setRetentionError(errorMessage(err));
+    } finally {
+      setRetentionBusy(false);
+    }
+  }
+
+  async function purgeNow() {
+    setRetentionBusy(true);
+    setRetentionError("");
+    setRetentionNotice("");
+    try {
+      const result = await api.purgeAudit();
+      setRetentionNotice(`Removed ${result.deleted} old audit entries.`);
+      onRefreshStatus();
+    } catch (err) {
+      setRetentionError(errorMessage(err));
+    } finally {
+      setRetentionBusy(false);
+    }
+  }
+
   const controller = status.controller;
+  const lastPurge = status.audit.last_purge;
 
   return (
     <div className="page-stack">
@@ -1296,6 +1362,82 @@ export function SettingsPage({
       <section className="panel">
         <div className="panel-heading">
           <div>
+            <h2>Audit retention</h2>
+            <p className="muted small">
+              How long to keep login, access-change, block, and unblock history
+            </p>
+          </div>
+          <span className={`badge ${status.audit.retention_days === 0 ? "badge-ignored" : "badge-scheduled"}`}>
+            {status.audit.retention_days === 0
+              ? "Keep forever"
+              : `${status.audit.retention_days} days`}
+          </span>
+        </div>
+        <div className="form-grid two">
+          <label>
+            <span>Retention (days)</span>
+            <input
+              type="number"
+              min={0}
+              max={36500}
+              value={retentionDays}
+              onChange={(event) =>
+                setRetentionDays(event.target.value === "" ? 0 : Number(event.target.value))
+              }
+            />
+            <span className="muted small">0 keeps every entry forever.</span>
+          </label>
+          <div className="key-values compact">
+            <div>
+              <span>Last cleanup</span>
+              <strong>{lastPurge?.at ? formatDateTime(String(lastPurge.at)) : "Never"}</strong>
+            </div>
+            <div>
+              <span>Removed in last cleanup</span>
+              <strong>{lastPurge?.deleted ?? 0}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="button-row retention-actions">
+          <button
+            className="button button-primary"
+            onClick={saveRetention}
+            disabled={retentionBusy}
+          >
+            {retentionBusy ? "Saving…" : "Save retention"}
+          </button>
+          <button
+            className="button button-ghost"
+            onClick={purgeNow}
+            disabled={retentionBusy || retentionDays === 0}
+          >
+            Run cleanup now
+          </button>
+        </div>
+        <p className="muted small">
+          Automatic cleanup runs at most once a day while the scheduler is enabled. Entries older
+          than the cutoff are deleted in UTC.
+        </p>
+        {retentionError ? (
+          <ErrorBanner message={retentionError} onDismiss={() => setRetentionError("")} />
+        ) : null}
+        {retentionNotice ? (
+          <div className="banner banner-success">
+            <span>{retentionNotice}</span>
+            <button
+              className="icon-button"
+              onClick={() => setRetentionNotice("")}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
             <h2>WiFi networks</h2>
             <p className="muted small">
               Per-SSID MAC allowlists are available on Network 10.0+ through the official API.
@@ -1352,6 +1494,46 @@ export function SettingsPage({
             API documentation is available at <a href="/api/docs">/api/docs</a>.
           </li>
         </ul>
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>About</h2>
+            <p className="muted small">
+              {status.app_name} v{status.version}
+            </p>
+          </div>
+          <span className="badge badge-allowed">MIT License</span>
+        </div>
+        <div className="key-values">
+          <div>
+            <span>License</span>
+            <strong>MIT</strong>
+          </div>
+          <div>
+            <span>Source</span>
+            <strong>
+              <a
+                href="https://gitea.smccloud.com/smccloud/UnFiWifiTool"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Gitea repository
+              </a>
+            </strong>
+          </div>
+        </div>
+        {licenseError ? <InfoBanner>{licenseError}</InfoBanner> : null}
+        <details className="license-details">
+          <summary>View MIT license text</summary>
+          <pre className="license-text">{license?.text ?? "License text unavailable."}</pre>
+        </details>
+        <p className="muted small license-link-row">
+          <a href="/LICENSE" target="_blank" rel="noreferrer">
+            Open the license in a new tab
+          </a>
+        </p>
       </section>
     </div>
   );

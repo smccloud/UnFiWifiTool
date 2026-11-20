@@ -188,7 +188,13 @@ response = urllib.request.urlopen("http://127.0.0.1:8000/api/system/status", tim
 if response.getcode() != 200:
     print(f"ERROR: /api/system/status returned {response.getcode()}", file=sys.stderr)
     sys.exit(1)
-print("status endpoint OK")
+
+license_response = urllib.request.urlopen("http://127.0.0.1:8000/api/license", timeout=5)
+license_body = license_response.read().decode()
+if license_response.getcode() != 200 or "MIT License" not in license_body:
+    print("ERROR: /api/license did not return the MIT license", file=sys.stderr)
+    sys.exit(1)
+print("status and license endpoints OK")
 PY
 
                     if docker logs "$AUTH_CONTAINER" 2>&1 | grep -q "Traceback (most recent call last)"; then
@@ -313,7 +319,22 @@ if created.get("mac") != "aa:bb:cc:dd:ee:01":
     print(f"ERROR: unexpected created device: {created}", file=sys.stderr)
     sys.exit(1)
 
-print("auth/CSRF/device API smoke test OK")
+retention = urllib.request.Request(
+    BASE + "/api/system/audit-retention",
+    data=json.dumps({"days": 30}).encode(),
+    headers={"Content-Type": "application/json", "X-CSRF-Token": csrf},
+    method="PUT",
+)
+with opener.open(retention, timeout=5) as response:
+    if response.getcode() != 200:
+        print(f"ERROR: audit retention update returned {response.getcode()}", file=sys.stderr)
+        sys.exit(1)
+    retention_payload = json.loads(response.read())
+if retention_payload.get("retention_days") != 30:
+    print(f"ERROR: unexpected retention response: {retention_payload}", file=sys.stderr)
+    sys.exit(1)
+
+print("auth/CSRF/device/retention API smoke test OK")
 PY
 
                     echo "=== Smoke tests passed ==="
