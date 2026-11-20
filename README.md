@@ -305,8 +305,9 @@ endpoint, and the UI footer/About panel. `frontend/package.json` and
 `.env.example`'s `IMAGE_VERSION` mirror it, and the backend test suite fails if
 they drift. Docker Hub images use the same version tag.
 
-The `DOCKER_NETWORK` parameter defaults to `host` so the pipeline also works on
-restricted/nested CI agents; set it to `default` for stricter build isolation.
+The `DOCKER_NETWORK` parameter defaults to `default`, so build and test containers
+use the Docker bridge network. Set it to `host` on restricted/nested/rootless CI
+agents where bridge/veth creation is unavailable.
 
 ## Configuration highlights
 

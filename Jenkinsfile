@@ -10,9 +10,9 @@
  * "Docker" (configurable via DOCKERHUB_CREDENTIALS_ID). Pull requests and other
  * branches are built and tested but not pushed.
  *
- * DOCKER_NETWORK defaults to "host" because it also works on restricted,
- * nested, or rootless CI agents where bridge/veth creation is unavailable.
- * Switch it to "default" if your policy requires build-network isolation.
+ * DOCKER_NETWORK defaults to "default" so build and test containers use the
+ * Docker bridge network. Switch it to "host" on restricted, nested, or rootless
+ * CI agents where bridge/veth creation is unavailable.
  */
 
 pipeline {
@@ -21,8 +21,8 @@ pipeline {
     parameters {
         choice(
             name: 'DOCKER_NETWORK',
-            choices: ['host', 'default'],
-            description: 'Network mode for build and test containers. Use default for stricter isolation.'
+            choices: ['default', 'host'],
+            description: 'Network mode for build and test containers. Default uses the Docker bridge network; use host on restricted/nested/rootless agents.'
         )
         string(
             name: 'DOCKERHUB_REPOSITORY',
@@ -60,7 +60,7 @@ pipeline {
         PERSIST_CONTAINER = "unifi-wifi-ci-persist-${BUILD_NUMBER}"
         DATA_VOLUME       = "unifi-wifi-ci-data-${BUILD_NUMBER}"
         COMPOSE_PROJECT   = "unifi-wifi-ci-${BUILD_NUMBER}"
-        DOCKER_NETWORK    = "${params.DOCKER_NETWORK ?: 'host'}"
+        DOCKER_NETWORK    = "${params.DOCKER_NETWORK ?: 'default'}"
         DOCKERHUB_REPOSITORY = "${params.DOCKERHUB_REPOSITORY ?: 'smccloud/unifi-wifi-tool'}"
         DOCKERHUB_CREDENTIALS_ID = "${params.DOCKERHUB_CREDENTIALS_ID ?: 'Docker'}"
         DOCKER_BUILDKIT   = "1"
