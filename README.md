@@ -19,6 +19,22 @@ Docker deployment.
 - Includes light, dark, and follow-system themes.
 - Runs as a single non-root container with SQLite in `/data`.
 
+## Screenshots
+
+The screenshots use demo data and a local mock UniFi controller.
+
+| Dashboard — dark | Dashboard — light |
+| :-: | :-: |
+| ![Dashboard in dark mode](docs/screenshots/overview-dark.jpg) | ![Dashboard in light mode](docs/screenshots/overview-light.jpg) |
+
+**Per-client schedule editor** — mix allow and block windows; block windows win.
+
+![Per-client schedule editor](docs/screenshots/schedule-editor.jpg)
+
+**Settings** — controller capabilities, audit retention, and the MIT license.
+
+<img src="docs/screenshots/settings-retention.jpg" alt="Settings, audit retention, and license" width="640">
+
 ## Important UniFi constraint
 
 There are two local APIs, and they do different things:
