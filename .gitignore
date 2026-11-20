@@ -12,6 +12,9 @@ node_modules/
 frontend/dist/
 *.tsbuildinfo
 
+# Generated scan output
+.vex/
+
 # Runtime data
 data/
 *.db

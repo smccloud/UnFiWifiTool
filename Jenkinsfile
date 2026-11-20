@@ -67,6 +67,7 @@ pipeline {
         CI                = "true"
         DOCKER_SCOUT_NO_CACHE = "true"
         SCOUT_FAIL_ON_SEVERITY = "${params.SCOUT_FAIL_ON_SEVERITY ?: 'critical'}"
+        VEX_AUTHOR = "security@smccloud.com"
     }
 
     stages {
@@ -154,8 +155,13 @@ pipeline {
                         printf '%s' "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USER" --password-stdin
                         trap 'docker logout >/dev/null 2>&1 || true' EXIT
 
+                        # Generate VEX exceptions for disputed base-image CVEs.
+                        ./scripts/generate-vex.sh "$IMAGE" "$WORKSPACE/.vex"
+
                         # Generate a vulnerability report and SBOM for the built image.
                         docker scout cves "$IMAGE" \
+                            --vex-location "$WORKSPACE/.vex" \
+                            --vex-author "$VEX_AUTHOR" \
                             --format sarif \
                             --output docker-scout.sarif
                         docker scout sbom "$IMAGE" \
@@ -169,6 +175,8 @@ pipeline {
                         # critical,high (or none) to change the policy.
                         if [ "$SCOUT_FAIL_ON_SEVERITY" != "none" ]; then
                             docker scout cves "$IMAGE" \
+                                --vex-location "$WORKSPACE/.vex" \
+                                --vex-author "$VEX_AUTHOR" \
                                 --only-severity "$SCOUT_FAIL_ON_SEVERITY" \
                                 --exit-code
                         else
@@ -583,6 +591,7 @@ PY
                 docker volume rm "unifi-wifi-ci-node-modules-$BUILD_NUMBER" >/dev/null 2>&1 || true
                 docker rmi "$IMAGE" >/dev/null 2>&1 || true
                 rm -f smoke-cookies.txt smoke-login.json
+                rm -rf "$WORKSPACE/.vex"
             '''
         }
         failure {
