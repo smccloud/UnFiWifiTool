@@ -265,8 +265,8 @@ docker build -t smccloud/unifi-wifi-tool:0.1.0 .
 The `Jenkinsfile` builds and tests the image, then publishes successful
 `master` builds to Docker Hub (`smccloud/unifi-wifi-tool` by default) using the
 Jenkins username/password credentials named **Docker**. Images are pushed as
-`:0.1.0` (the version in `VERSION`), `:<build-number>`, `:<short-git-sha>`, and
-`:latest`. Override the repository or credential ID with the
+`:0.1.0` (the version in `VERSION`) and `:latest`. Override the repository or
+credential ID with the
 `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID` parameters; disable
 publishing with `PUSH_TO_DOCKERHUB=false`.
 
@@ -289,7 +289,7 @@ publishing with `PUSH_TO_DOCKERHUB=false`.
 7. creates a device in a fresh `/data` volume, replaces the container, and
    confirms the device is still present from the same database,
 8. on `master`, logs into Docker Hub with the `Docker` credential and pushes
-   the version, build-number, short-SHA, and `latest` tags.
+   the version and `latest` tags.
 
 ### Versioning
 
