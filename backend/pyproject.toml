@@ -1,0 +1,14 @@
+[project]
+name = "unifi-wifi-tool-backend"
+version = "0.1.0"
+description = "Manage device access to UniFi WiFi networks"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

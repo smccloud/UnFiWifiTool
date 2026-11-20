@@ -1,0 +1,317 @@
+# UniFi WiFi Access Manager — Design
+
+Status: initial scaffold (v0.1). This document explains the constraints that
+shape the product and the architecture of the current implementation.
+
+## 1. Problem
+
+Small UniFi networks often need a simple answer to: *which devices are allowed
+to use the WiFi, and when?* UniFi's own UI is powerful but awkward for
+day-to-day device decisions, particularly:
+
+- blocking or unblocking a device quickly,
+- keeping a curated inventory with human-friendly labels and notes,
+- allowing a device only during certain hours,
+- keeping an audit trail of who changed access and when.
+
+This application is a single-container web app for those tasks.
+
+## 2. Goals and non-goals
+
+### Goals
+
+- Manage a local inventory of WiFi devices keyed by MAC address.
+- Allow, block, or leave devices unmanaged.
+- Support weekly, timezone-aware access schedules, including overnight windows.
+- Apply access changes automatically in the background and record every action.
+- Run as one non-root Docker container with SQLite on a volume.
+- Work with UniFi OS consoles (UDM, Cloud Gateway, etc.) and current Network
+  application versions.
+- Be safe by default: authentication, CSRF protection, TLS verification, audit
+  log, dry-run mode, and explicit warnings for destructive operations.
+
+### Non-goals (v1)
+
+- Replacing UniFi's firewall, RADIUS, or guest portal configuration.
+- Managing wired switch ports.
+- Multi-controller / multi-tenant orchestration.
+- A full identity provider. The app has a single admin account; OIDC is planned.
+- Guaranteeing pre-association enforcement for unknown devices (see §4).
+
+## 3. UniFi API constraints
+
+There are two relevant local APIs on a UniFi OS console.
+
+| Surface | Path | Auth | Used for |
+| --- | --- | --- | --- |
+| Official Integration API | `/proxy/network/integration/v1` | `X-API-KEY` | Sites, connected clients, WiFi broadcasts, per-SSID MAC filtering (Network 10+) |
+| Classic controller API | `/proxy/network/api/s/{site}` | `TOKEN` cookie + `X-CSRF-Token` | Rich client inventory (`/stat/sta`) and client block/unblock (`/cmd/stamgr`) |
+
+Critical consequence: **client block/unblock is not exposed by the official
+API**. It requires a local admin session. The app therefore treats the API key
+and local admin credentials as separate capabilities:
+
+- API key only → read-only inventory, controller health, SSID allowlist reads.
+- API key + local admin → full block/unblock and schedule enforcement.
+- Local admin only → inventory and block/unblock, but no official API features.
+
+Capabilities are detected at runtime and surfaced in the UI, rather than
+failing startup. A missing capability produces a clear warning and disables the
+relevant actions.
+
+Network 10.0+ additionally exposes a per-SSID `clientFilteringPolicy` with an
+`ALLOW`/`BLOCK` MAC list (up to 512 entries). This is the path to true
+pre-association allowlisting. It is implemented as an experimental,
+opt-in write path because editing an SSID triggers a reprovision and can briefly
+disconnect clients.
+
+## 4. Access model
+
+Each device has one access mode:
+
+| Mode | Meaning |
+| --- | --- |
+| `allowed` | Not blocked; expected to be on the network. |
+| `blocked` | Blocked at the controller with `block-sta`. |
+| `scheduled` | Computed from a weekly schedule. |
+| `ignored` | Unmanaged. Discovery can update observations but never changes access. |
+
+A schedule has:
+
+- `kind`: `allow_during` (allowed inside windows, blocked outside) or
+  `block_during` (blocked inside windows, allowed outside),
+- an IANA timezone,
+- one or more weekly windows, each with days `0..6` (Monday = 0) and
+  `HH:MM` start/end times.
+
+Rules:
+
+- Windows are end-exclusive: `09:00–17:00` is active at `09:00` and inactive at
+  `17:00`.
+- If `end <= start`, the window crosses midnight and belongs to its start day.
+  A Monday `22:00–07:00` window covers Tuesday 06:59.
+- Evaluation uses the configured timezone. The next transition is computed by
+  checking window boundaries over the next eight days.
+- A corrupt or missing schedule fails closed to `blocked`.
+- Manual `allowed`/`blocked` modes override any stored schedule.
+- Schedules are evaluated by the background loop (default every 30 seconds)
+  and applied only to explicitly managed devices.
+
+### Why block/unblock rather than a true allowlist by default?
+
+`block-sta` is per-device and non-disruptive. It is a denylist, not a
+pre-association ACL: a never-seen device can associate before an operator
+blocks it. For strict "only these MACs may join", use the SSID MAC filter
+(Network 10+) or RADIUS MAC authentication. The data model and UI are designed
+so both mechanisms can coexist.
+
+## 5. Architecture
+
+```
+                        ┌──────────────────────────────┐
+                        │  Browser (React SPA)         │
+                        └──────────────┬───────────────┘
+                                       │ HTTPS / JSON + session cookie
+                        ┌──────────────▼───────────────┐
+                        │  FastAPI                     │
+                        │  · auth + CSRF               │
+                        │  · devices / clients / audit │
+                        │  · static SPA                │
+                        └───────┬──────────────┬───────┘
+                                │              │
+                    ┌───────────▼───┐   ┌──────▼─────────────┐
+                    │ SQLite        │   │ UniFiService       │
+                    │ devices       │   │ capability detect  │
+                    │ schedules     │   └───┬────────────┬───┘
+                    │ audit         │       │            │
+                    │ settings      │  ┌────▼─────┐  ┌───▼──────────┐
+                    └───────────────┘  │Integration│  │Classic       │
+                                       │API client │  │API client    │
+                                       │X-API-KEY  │  │cookie+CSRF   │
+                                       └───────────┘  └──────────────┘
+                                ▲
+                                │ every N seconds
+                    ┌───────────┴───────────┐
+                    │ reconcile / scheduler │
+                    └───────────────────────┘
+```
+
+### Backend modules
+
+| Module | Responsibility |
+| --- | --- |
+| `app/config.py` | Environment configuration, validation, TLS settings. |
+| `app/db.py` | SQLAlchemy engine/session, UTC datetime handling, SQLite pragmas. |
+| `app/models.py` | `Device`, `AuditLog`, `Setting`. |
+| `app/schedule.py` | Pure schedule validation, evaluation, next-transition math. |
+| `app/unifi/integration.py` | Official API client with pagination, 429/5xx retries. |
+| `app/unifi/classic.py` | Login, CSRF rotation, `/stat/sta`, `/cmd/stamgr`. |
+| `app/unifi/service.py` | Capability detection and high-level operations. |
+| `app/reconcile.py` | Discovery, drift detection, apply/audit, dry-run. |
+| `app/routes/*` | JSON API. |
+| `app/main.py` | Lifespan, scheduler task, security headers, SPA serving. |
+
+### Data model
+
+`devices`
+
+- `mac` unique, normalized lowercase colon form.
+- `access_mode` (`allowed`, `blocked`, `scheduled`, `ignored`).
+- schedule columns (`schedule_kind`, `schedule_timezone`, `schedule_windows` JSON).
+- computed state (`effective_access`, `next_change_at`).
+- enforcement bookkeeping (`last_applied_access`, `last_applied_at`, `last_error`).
+- observed controller state (`observed_blocked`, hostname, IP, SSID, signal,
+  last seen, UniFi client ID).
+- provenance (`source`, `created_by`, timestamps).
+
+`audit_log`
+
+Append-only: timestamp, actor, action, target MAC, result, JSON detail,
+request ID. Secrets are never recorded.
+
+`settings`
+
+Small key/value store for runtime facts such as the last sync summary.
+
+## 6. Reconciliation
+
+A sync run performs:
+
+1. **Discover** connected clients from the controller. Existing devices get
+   refreshed observations; new clients become `ignored` devices when discovery
+   is enabled. User-owned fields (label, notes, access mode) are never
+   overwritten.
+2. **Evaluate** every device whose mode is not `ignored`:
+   - compute effective access and next transition,
+   - compare with `last_applied_access`,
+   - compare with the observed controller `blocked` flag when available.
+3. **Apply** only when needed:
+   - never call `unblock` merely because a new allowed device was added,
+   - correct drift when the controller reports an unexpected block state,
+   - block a device that is explicitly blocked even if it is offline.
+4. **Audit** each call, including failures, and persist the sync summary.
+
+The apply rule is intentionally conservative:
+
+| Effective | Last applied | Observed blocked | Action |
+| --- | --- | --- | --- |
+| allowed | none | unknown/false | none |
+| allowed | blocked | any | unblock |
+| allowed | any | true | unblock |
+| blocked | blocked | unknown/true | none |
+| blocked | none/allowed | any | block |
+| blocked | any | false | block |
+
+Concurrent syncs are rejected with HTTP 409. Dry-run mode records intended
+actions as `dry_run` audit entries without calling the controller.
+
+## 7. HTTP API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/auth/login` | Session login; returns CSRF token. |
+| POST | `/api/auth/logout` | Clear session. |
+| GET | `/api/auth/me` | Current user + CSRF token. |
+| GET | `/api/system/status` | Capabilities, counts, enforcement settings, last sync. |
+| POST | `/api/system/sync` | Run discovery + reconciliation. |
+| POST | `/api/system/test` | Force capability re-detection. |
+| GET | `/api/devices` | Search/filter inventory. |
+| POST | `/api/devices` | Add a device by MAC. |
+| GET/PATCH/DELETE | `/api/devices/{id}` | Read, edit, or remove a device. |
+| POST | `/api/devices/{id}/schedule` | Set/replace a weekly schedule. |
+| DELETE | `/api/devices/{id}/schedule` | Clear schedule; device becomes unmanaged. |
+| POST | `/api/devices/{id}/apply` | Apply the current effective state now. |
+| GET | `/api/clients` | Live connected clients merged with inventory state. |
+| GET | `/api/wifi` | SSIDs and current MAC-filter policy. |
+| GET | `/api/audit` | Filterable audit log. |
+
+All mutating endpoints require the session cookie **and** an `X-CSRF-Token`
+header. The API is same-origin only.
+
+## 8. UI
+
+Five views:
+
+- **Overview** — counts, controller health, enforcement mode, recent activity.
+- **Devices** — searchable inventory, allow/block actions, edit drawer with
+  notes, observed state, and the schedule editor.
+- **Live clients** — connected clients from the controller, with one-click
+  allow/block or add-to-inventory.
+- **Audit log** — filter by action, result, or MAC.
+- **Settings** — controller capabilities, SSID list/filter state, enforcement
+  settings, security notes.
+
+The schedule editor includes presets (weekdays, evenings, overnight, blocking
+weekdays), day toggles, timezone selection, multiple windows, and a plain-English
+preview.
+
+## 9. Security
+
+- Single admin account; password stored as scrypt hash (or supplied as a hash).
+- Signed, HttpOnly session cookie; `Secure` flag via `COOKIE_SECURE`.
+- CSRF double-submit token required on every mutation.
+- Login rate limiting with temporary lockout.
+- Secrets only in environment variables; never returned by the API or written
+  to audit details.
+- Controller TLS verification is on by default. `UNIFI_CA_BUNDLE` is preferred;
+  `UNIFI_TLS_INSECURE` is an explicit, logged opt-out.
+- Security headers include CSP, `X-Frame-Options: DENY`, `nosniff`, and HSTS
+  when cookies are marked secure.
+- Container runs as a non-root user with `no-new-privileges` and all Linux
+  capabilities dropped in Compose.
+- API key inherits the creating UniFi admin's role. Use a dedicated, least-
+  privileged local admin, ideally with a key expiry.
+
+## 10. Failure handling
+
+| Failure | Behaviour |
+| --- | --- |
+| Controller unreachable | Detection reports an error; sync returns 502; UI shows status. |
+| Missing API key | Official reads/SSID features marked unavailable; classic paths still work. |
+| Missing local admin | Block/unblock unavailable; inventory/schedules remain available and warn. |
+| 2FA on local admin | Login fails with a clear message; use a service account without 2FA. |
+| Self-signed certificate | Set `UNIFI_CA_BUNDLE` or explicitly disable verification. |
+| Login rate limit / 429 | Surfaced as an error; no login-per-request loop. |
+| Corrupt schedule | Fails closed to `blocked` and records an error on the device. |
+| Sync overlap | Manual sync returns 409; background run is skipped. |
+| Partial failure | Per-device errors are recorded; other devices still reconcile. |
+
+## 11. Deployment
+
+- Multi-stage Docker build: Node builds the SPA; Python runtime serves API and
+  static files.
+- SQLite on `/data` (named volume in Compose).
+- Health check: `GET /api/healthz`.
+- Reverse proxy is optional; terminate TLS at Caddy/Traefik/nginx and set
+  `COOKIE_SECURE=true`.
+- One replica only: the scheduler and SQLite are not designed for horizontal
+  scaling yet.
+
+## 12. Roadmap
+
+1. **Strict allowlist mode**: manage the SSID `clientFilteringPolicy` from the
+   device inventory, with a batched "apply changes" step, blast-radius warning,
+   and before/after diff. (Read path and experimental apply code exist.)
+2. **Notifications**: email/webhook on block/unblock, login failure, controller
+   outage, and schedule transitions.
+3. **CSV import/export** of labels, notes, and schedules.
+4. **OIDC / multi-user RBAC** with read-only and operator roles.
+5. **Multiple controllers/sites** and per-site timezones.
+6. **Prometheus metrics** and structured JSON logging.
+7. **TLS certificate pinning** for self-signed consoles.
+8. **Backup/restore** of the SQLite database and schedules.
+
+## 13. Verification checklist for a real controller
+
+Before relying on enforcement, verify:
+
+- [ ] `GET /api/system/test` shows the expected Network version and site.
+- [ ] API key works for `/api/wifi` on the installed Network version.
+- [ ] Local admin can block and unblock a test device; the client reconnects
+      after unblock.
+- [ ] A weekday schedule with an overnight window produces the expected
+      transitions (observe the audit log).
+- [ ] The timezone matches the site's local time; DST transitions behave.
+- [ ] Blocking an offline known client persists after it reconnects.
+- [ ] `DRY_RUN=true` produces `dry_run` audit rows and no controller changes.
+- [ ] The container survives a restart with the SQLite volume intact.
