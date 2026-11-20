@@ -5,9 +5,10 @@
  *   - Docker Engine / CLI (the agent user must be able to run docker)
  *   - Network access to Docker Hub, PyPI, and npm
  *
- * The pipeline does not push an image. It builds it, runs the backend and
- * frontend test suites, validates docker-compose, and boots the image twice to
- * verify both authentication modes.
+ * The pipeline builds and tests the image, verifies persistence, and publishes
+ * successful master builds to Docker Hub using the Jenkins credentials named
+ * "Docker" (configurable via DOCKERHUB_CREDENTIALS_ID). Pull requests and other
+ * branches are built and tested but not pushed.
  *
  * DOCKER_NETWORK defaults to "host" because it also works on restricted,
  * nested, or rootless CI agents where bridge/veth creation is unavailable.
@@ -22,6 +23,21 @@ pipeline {
             name: 'DOCKER_NETWORK',
             choices: ['host', 'default'],
             description: 'Network mode for build and test containers. Use default for stricter isolation.'
+        )
+        string(
+            name: 'DOCKERHUB_REPOSITORY',
+            defaultValue: 'smccloud/unifi-wifi-tool',
+            description: 'Docker Hub repository to publish to.'
+        )
+        string(
+            name: 'DOCKERHUB_CREDENTIALS_ID',
+            defaultValue: 'Docker',
+            description: 'Jenkins username/password credentials ID for Docker Hub.'
+        )
+        booleanParam(
+            name: 'PUSH_TO_DOCKERHUB',
+            defaultValue: true,
+            description: 'Publish the tested image on master builds.'
         )
     }
 
@@ -40,6 +56,8 @@ pipeline {
         DATA_VOLUME       = "unifi-wifi-ci-data-${BUILD_NUMBER}"
         COMPOSE_PROJECT   = "unifi-wifi-ci-${BUILD_NUMBER}"
         DOCKER_NETWORK    = "${params.DOCKER_NETWORK ?: 'host'}"
+        DOCKERHUB_REPOSITORY = "${params.DOCKERHUB_REPOSITORY ?: 'smccloud/unifi-wifi-tool'}"
+        DOCKERHUB_CREDENTIALS_ID = "${params.DOCKERHUB_CREDENTIALS_ID ?: 'Docker'}"
         DOCKER_BUILDKIT   = "1"
         CI                = "true"
     }
@@ -426,6 +444,51 @@ PY
                     docker rm "$PERSIST_CONTAINER" >/dev/null
                     docker volume rm "$DATA_VOLUME" >/dev/null
                 '''
+            }
+        }
+
+        stage('Publish to Docker Hub') {
+            when {
+                allOf {
+                    expression {
+                        def branchName = env.GIT_BRANCH ?: env.BRANCH_NAME ?: ''
+                        return branchName == 'master' || branchName.endsWith('/master')
+                    }
+                    expression { return params.PUSH_TO_DOCKERHUB }
+                }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_PASSWORD'
+                )]) {
+                    sh '''
+                        set -eu
+                        test -n "$DOCKERHUB_REPOSITORY" || {
+                            echo "ERROR: DOCKERHUB_REPOSITORY is empty" >&2
+                            exit 1
+                        }
+
+                        short_sha="$(printf '%s' "${GIT_COMMIT:-$BUILD_NUMBER}" | cut -c1-12)"
+                        build_tag="$DOCKERHUB_REPOSITORY:$BUILD_NUMBER"
+                        sha_tag="$DOCKERHUB_REPOSITORY:$short_sha"
+                        latest_tag="$DOCKERHUB_REPOSITORY:latest"
+
+                        printf '%s' "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        docker tag "$IMAGE" "$build_tag"
+                        docker tag "$IMAGE" "$sha_tag"
+                        docker tag "$IMAGE" "$latest_tag"
+
+                        docker push "$build_tag"
+                        docker push "$sha_tag"
+                        docker push "$latest_tag"
+
+                        echo "Published $build_tag, $sha_tag, $latest_tag"
+                    '''
+                }
             }
         }
     }

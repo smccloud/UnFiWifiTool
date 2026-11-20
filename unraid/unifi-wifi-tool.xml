@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>UniFi-WiFi-Access-Manager</Name>
-  <!-- Replace this with the registry path of your built image. -->
-  <Repository>unifi-wifi-tool:latest</Repository>
-  <Registry/>
+  <!-- Change this if you publish under a different Docker Hub namespace. -->
+  <Repository>smccloud/unifi-wifi-tool:latest</Repository>
+  <Registry>https://hub.docker.com/r/smccloud/unifi-wifi-tool</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>

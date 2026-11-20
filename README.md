@@ -65,9 +65,7 @@ Docker Compose is optional. The image is designed to be run directly, including
 through unRAID's Docker Manager.
 
 ```bash
-git clone <this-repo> unifi-wifi-tool
-cd unifi-wifi-tool
-docker build -t unifi-wifi-tool:latest .
+docker pull smccloud/unifi-wifi-tool:latest
 
 mkdir -p /opt/unifi-wifi-tool
 docker run -d \
@@ -83,7 +81,15 @@ docker run -d \
   -e UNIFI_API_KEY='...' \
   -e UNIFI_USERNAME='unifi-service' \
   -e UNIFI_PASSWORD='...' \
-  unifi-wifi-tool:latest
+  smccloud/unifi-wifi-tool:latest
+```
+
+To build from source instead:
+
+```bash
+git clone <this-repo> unifi-wifi-tool
+cd unifi-wifi-tool
+docker build -t smccloud/unifi-wifi-tool:latest .
 ```
 
 Open <http://localhost:8080> (or the host/IP where the container runs).
@@ -253,10 +259,15 @@ cd frontend && npm run build
 ## Docker build and CI
 
 ```bash
-docker build -t unifi-wifi-tool .
+docker build -t smccloud/unifi-wifi-tool:latest .
 ```
 
-The `Jenkinsfile` builds and tests the image without pushing it:
+The `Jenkinsfile` builds and tests the image, then publishes successful
+`master` builds to Docker Hub (`smccloud/unifi-wifi-tool` by default) using the
+Jenkins username/password credentials named **Docker**. Images are pushed as
+`:<build-number>`, `:<short-git-sha>`, and `:latest`. Override the repository or
+credential ID with the `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID`
+parameters; disable publishing with `PUSH_TO_DOCKERHUB=false`.
 
 1. validates the Docker toolchain,
 2. runs backend tests in `python:3.13-slim` and publishes JUnit results,
@@ -275,7 +286,9 @@ The `Jenkinsfile` builds and tests the image without pushing it:
    - the MIT license endpoint returns the license,
    - audit retention can be updated with a CSRF token,
 7. creates a device in a fresh `/data` volume, replaces the container, and
-   confirms the device is still present from the same database.
+   confirms the device is still present from the same database,
+8. on `master`, logs into Docker Hub with the `Docker` credential and pushes
+   the build-number, short-SHA, and `latest` tags.
 
 The `DOCKER_NETWORK` parameter defaults to `host` so the pipeline also works on
 restricted/nested CI agents; set it to `default` for stricter build isolation.
