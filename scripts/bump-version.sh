@@ -12,6 +12,38 @@
 #
 # After updating, the script commits the changed version files and pushes the
 # current branch to PUSH_REMOTE (default: origin).
+#
+# Scheduling a weekly bump with cron
+# ----------------------------------
+# The script is safe to run unattended, but cron starts it with a minimal
+# environment and no terminal, so a few things must be true first:
+#
+#   1. The checkout is on a branch (not a detached HEAD) and PUSH_REMOTE is
+#      configured, e.g. `git -C /opt/UnFiWifiTool checkout main`.
+#   2. The version files are committed. The script refuses to run if any of
+#      them has uncommitted changes, so the working tree must be clean.
+#   3. git can push without prompting: use an SSH key with no passphrase or a
+#      stored credential helper, and make sure the key is readable by the cron
+#      user (HOME must resolve, since cron may not set it).
+#   4. Use absolute paths, because cron's PATH usually does not include the
+#      directory holding your git/bash binaries.
+#
+# Example crontab entry (every Monday at 03:00), added with `crontab -e`:
+#
+#   0 3 * * 1 cd /opt/UnFiWifiTool && HOME=/home/deploy PATH=/usr/local/bin:/usr/bin:/bin BUMP_AMOUNT=0.0.1 ./scripts/bump-version.sh >> /var/log/unfi-bump-version.log 2>&1
+#
+# Notes:
+#   - Set BUMP_AMOUNT in the cron line (patch is the usual choice for a
+#     scheduled run); omitting it defaults to a minor bump.
+#   - Keep the log redirect so failures are visible; check that file if the
+#     version stops moving.
+#   - If the branch is protected and direct pushes are rejected, the push step
+#     fails. Either allow the push for the cron user or run the script locally
+#     and open a pull request instead.
+#   - For shared machines, prefer a system cron file such as /etc/cron.d/unfi
+#     (which takes an extra user field) over the invoking user's crontab.
+#   - Verify the setup by running the same command once by hand from an empty
+#     environment: `env -i /bin/bash -c '<cron command>'`.
 
 set -euo pipefail
 
