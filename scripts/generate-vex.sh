@@ -143,3 +143,10 @@ generate_vex \
   "glibc" \
   "vulnerable_code_not_in_execute_path" \
   "The application does not pass attacker-controlled patterns to glob(3). The glibc behavior is standard POSIX behavior and requires the application to impose its own limits."
+
+generate_vex \
+  "CVE-2011-3374" \
+  "apt" \
+  "apt" \
+  "vulnerable_code_not_in_execute_path" \
+  "The runtime image does not use apt or apt-key and has no keyring URI configured. Package management is only used during the image build."
