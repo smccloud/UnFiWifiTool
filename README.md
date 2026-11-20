@@ -12,6 +12,7 @@ Docker deployment.
 ## What it does
 
 - Builds a local inventory of WiFi clients (MAC, label, notes, SSID, IP, signal).
+  Wired clients in a full UniFi network are ignored.
 - Allows, blocks, or leaves devices unmanaged through the UniFi controller.
 - Supports **per-client time-based access** with custom allow and block windows
   in the same weekly schedule. Block windows win over allow windows.
@@ -65,7 +66,7 @@ Docker Compose is optional. The image is designed to be run directly, including
 through unRAID's Docker Manager.
 
 ```bash
-docker pull smccloud/unifi-wifi-tool:0.2.0
+docker pull smccloud/unifi-wifi-tool:0.3.0
 
 mkdir -p /opt/unifi-wifi-tool
 docker run -d \
@@ -81,7 +82,7 @@ docker run -d \
   -e UNIFI_API_KEY='...' \
   -e UNIFI_USERNAME='unifi-service' \
   -e UNIFI_PASSWORD='...' \
-  smccloud/unifi-wifi-tool:0.2.0
+  smccloud/unifi-wifi-tool:0.3.0
 ```
 
 To build from source instead:
@@ -89,7 +90,7 @@ To build from source instead:
 ```bash
 git clone <this-repo> unifi-wifi-tool
 cd unifi-wifi-tool
-docker build -t smccloud/unifi-wifi-tool:0.2.0 .
+docker build -t smccloud/unifi-wifi-tool:0.3.0 .
 ```
 
 Open <http://localhost:8080> (or the host/IP where the container runs).
@@ -259,13 +260,13 @@ cd frontend && npm run build
 ## Docker build and CI
 
 ```bash
-docker build -t smccloud/unifi-wifi-tool:0.2.0 .
+docker build -t smccloud/unifi-wifi-tool:0.3.0 .
 ```
 
 The `Jenkinsfile` builds and tests the image, then publishes successful
 `master` builds to Docker Hub (`smccloud/unifi-wifi-tool` by default) using the
 Jenkins username/password credentials named **Docker**. Images are pushed as
-`:0.2.0` (the version in `VERSION`) and `:latest`. Override the repository or
+`:0.3.0` (the version in `VERSION`) and `:latest`. Override the repository or
 credential ID with the
 `DOCKERHUB_REPOSITORY` and `DOCKERHUB_CREDENTIALS_ID` parameters; disable
 publishing with `PUSH_TO_DOCKERHUB=false`.
@@ -293,7 +294,7 @@ publishing with `PUSH_TO_DOCKERHUB=false`.
 
 ### Versioning
 
-The application version lives in [`VERSION`](VERSION) and is currently `0.2.0`.
+The application version lives in [`VERSION`](VERSION) and is currently `0.3.0`.
 The backend exposes it through `/api/auth/me`, `/api/system/status`, the health
 endpoint, and the UI footer/About panel. `frontend/package.json` and
 `.env.example`'s `IMAGE_VERSION` mirror it, and the backend test suite fails if
@@ -315,7 +316,7 @@ restricted/nested CI agents; set it to `default` for stricter build isolation.
 | `UNIFI_SITE_ID` | first site | Site UUID for the official API. |
 | `UNIFI_SITE` | `default` | Classic API site name. |
 | `APP_TIMEZONE` | `UTC` | Default schedule timezone. |
-| `DISCOVERY_ENABLED` | `true` | Import connected clients as unmanaged. |
+| `DISCOVERY_ENABLED` | `true` | Import connected WiFi clients as unmanaged. |
 | `AUTO_APPLY` | `true` | Apply desired states/schedules automatically. |
 | `DRY_RUN` | `false` | Log calls without sending them. |
 | `AUDIT_RETENTION_DAYS` | `0` | Days to keep audit entries; `0` = forever. UI override available. |

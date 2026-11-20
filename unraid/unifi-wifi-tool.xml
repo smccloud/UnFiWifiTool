@@ -40,7 +40,7 @@
   <Config Name="AUDIT_RETENTION_DAYS" Target="AUDIT_RETENTION_DAYS" Default="0" Mode="" Description="Days to keep audit entries; 0 = forever" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
   <Config Name="SCHEDULER_ENABLED" Target="SCHEDULER_ENABLED" Default="true" Mode="" Description="Run the background schedule/reconcile loop" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="SCHEDULER_INTERVAL_SECONDS" Target="SCHEDULER_INTERVAL_SECONDS" Default="30" Mode="" Description="Schedule evaluation interval" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
-  <Config Name="DISCOVERY_ENABLED" Target="DISCOVERY_ENABLED" Default="true" Mode="" Description="Import connected clients as unmanaged devices" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="DISCOVERY_ENABLED" Target="DISCOVERY_ENABLED" Default="true" Mode="" Description="Import connected WiFi clients as unmanaged devices" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="COOKIE_SECURE" Target="COOKIE_SECURE" Default="false" Mode="" Description="Set true only when the Web UI is behind HTTPS" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="UNIFI_TLS_VERIFY" Target="UNIFI_TLS_VERIFY" Default="true" Mode="" Description="Verify the controller TLS certificate" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="UNIFI_CA_BUNDLE" Target="UNIFI_CA_BUNDLE" Default="" Mode="" Description="Optional CA bundle path for a private certificate" Type="Variable" Display="advanced" Required="false" Mask="false"/>

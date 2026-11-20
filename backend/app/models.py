@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Index, Integer, String, Text
+from sqlalchemy import Boolean, Index, Integer, String, Text, or_
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, UTCDateTime
@@ -44,6 +44,8 @@ class Device(Base):
     last_signal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     unifi_client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # wireless | wired | NULL when not yet observed
+    connection_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     # manual | discovered
     source: Mapped[str] = mapped_column(String(16), default="manual")
@@ -54,6 +56,11 @@ class Device(Base):
     )
 
     __table_args__ = (Index("ix_devices_mode_source", "access_mode", "source"),)
+
+
+# The inventory is WiFi-only. Rows that have not been observed yet (NULL) stay
+# visible; once the controller reports a device as wired, it is hidden.
+WIRELESS_ONLY = or_(Device.connection_type.is_(None), Device.connection_type != "wired")
 
 
 class AuditLog(Base):

@@ -85,6 +85,11 @@ def sync(
     devices = db.query(Device).filter(Device.access_mode != "ignored").all()
 
     for device in devices:
+        if device.connection_type == "wired":
+            # This tool only manages WiFi clients; leave wired devices alone.
+            summary.skipped += 1
+            continue
+
         schedule = load_schedule(device)
         effective = effective_access(device.access_mode, schedule, now)
         next_change = next_transition_for_mode(device.access_mode, schedule, now)
@@ -172,7 +177,7 @@ def _discover(db: Session, clients: list[LiveClient], settings: Settings) -> tup
     for client in clients:
         device = existing.get(client.mac)
         if device is None:
-            if not settings.discovery_enabled:
+            if not settings.discovery_enabled or client.connection_type == "wired":
                 continue
             device = Device(
                 mac=client.mac,
@@ -196,6 +201,7 @@ def _discover(db: Session, clients: list[LiveClient], settings: Settings) -> tup
             ("last_signal", client.signal),
             ("last_seen_at", client.last_seen_at or now),
             ("unifi_client_id", client.unifi_client_id),
+            ("connection_type", client.connection_type),
             ("observed_blocked", client.blocked),
         ):
             if value is not None and getattr(device, field_name) != value:

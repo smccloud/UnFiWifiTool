@@ -10,7 +10,7 @@ from app.auth import csrf_guard, require_user
 from app.config import get_settings
 from app.db import get_db
 from app.deps import get_request_id, get_service
-from app.models import Device
+from app.models import WIRELESS_ONLY, Device
 from app.reconcile import SyncBusy, run_sync
 from app.retention import get_retention_days, purge_old_audit, set_retention_days
 from app.runtime import get_setting
@@ -62,16 +62,16 @@ def status(
     settings = get_settings()
     controller = _controller_info(service)
 
-    total = db.query(Device).count()
+    wireless = db.query(Device).filter(WIRELESS_ONLY)
     counts = Counts(
-        devices=total,
-        allowed=db.query(Device).filter(Device.access_mode == "allowed").count(),
-        blocked=db.query(Device).filter(Device.access_mode == "blocked").count(),
-        scheduled=db.query(Device).filter(Device.access_mode == "scheduled").count(),
-        ignored=db.query(Device).filter(Device.access_mode == "ignored").count(),
-        connected=db.query(Device)
-        .filter(Device.last_seen_at >= utcnow() - timedelta(minutes=10))
-        .count(),
+        devices=wireless.count(),
+        allowed=wireless.filter(Device.access_mode == "allowed").count(),
+        blocked=wireless.filter(Device.access_mode == "blocked").count(),
+        scheduled=wireless.filter(Device.access_mode == "scheduled").count(),
+        ignored=wireless.filter(Device.access_mode == "ignored").count(),
+        connected=wireless.filter(
+            Device.last_seen_at >= utcnow() - timedelta(minutes=10)
+        ).count(),
     )
 
     last_sync_raw = get_setting(db, "last_sync")

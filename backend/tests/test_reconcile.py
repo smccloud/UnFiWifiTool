@@ -192,6 +192,33 @@ def test_discovery_creates_unmanaged_device(db, monkeypatch):
     assert service.calls == []
 
 
+def test_discovery_ignores_wired_clients(db, monkeypatch):
+    monkeypatch.setattr("app.reconcile.utcnow", lambda: NOW)
+    service = FakeService(
+        [LiveClient(mac=MAC, name="Office PC", connection_type="wired")]
+    )
+
+    summary = sync(db, service, settings(), actor="tester")
+
+    assert summary.discovered == 0
+    assert db.query(Device).count() == 0
+
+
+def test_existing_device_seen_as_wired_is_not_enforced(db, monkeypatch):
+    monkeypatch.setattr("app.reconcile.utcnow", lambda: NOW)
+    device = add_device(db, mode="blocked")
+    service = FakeService(
+        [LiveClient(mac=MAC, blocked=False, connection_type="wired")]
+    )
+
+    summary = sync(db, service, settings(), actor="tester")
+
+    assert service.calls == []
+    assert summary.applied == 0
+    db.refresh(device)
+    assert device.connection_type == "wired"
+
+
 def test_discovery_can_be_disabled(db, monkeypatch):
     monkeypatch.setattr("app.reconcile.utcnow", lambda: NOW)
     service = FakeService([LiveClient(mac=MAC, blocked=False)])

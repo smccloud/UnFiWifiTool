@@ -9,7 +9,7 @@ from app.auth import csrf_guard, require_user
 from app.config import get_settings
 from app.db import get_db
 from app.deps import get_request_id, get_service
-from app.models import Device
+from app.models import WIRELESS_ONLY, Device
 from app.reconcile import apply_device_now, refresh_device_state
 from app.schedule import ScheduleError, clear_schedule, save_schedule, validate_schedule
 from app.schemas import (
@@ -46,7 +46,7 @@ def list_devices(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Device)
+    query = db.query(Device).filter(WIRELESS_ONLY)
     if q.strip():
         needle = f"%{q.strip().lower()}%"
         query = query.filter(

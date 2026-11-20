@@ -430,7 +430,7 @@ export function DevicesPage({
         ) : (
           <EmptyState
             title="No devices match"
-            hint="Add a device by MAC, or let discovery populate connected clients."
+            hint="Add a device by MAC, or let discovery populate connected WiFi clients."
           />
         )}
       </section>

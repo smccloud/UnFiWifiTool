@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from app.db import _migrate_sqlite
 
 
-def test_schedule_default_column_is_added_to_existing_database():
+def test_additive_columns_are_added_to_existing_database():
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -19,6 +19,7 @@ def test_schedule_default_column_is_added_to_existing_database():
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(devices)")
         }
     assert "schedule_default" in columns
+    assert "connection_type" in columns
 
     # Running it again is a no-op.
     _migrate_sqlite(engine)

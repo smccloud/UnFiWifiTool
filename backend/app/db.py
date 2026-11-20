@@ -113,6 +113,10 @@ def _migrate_sqlite(engine: Engine) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE devices ADD COLUMN schedule_default VARCHAR(16)"
             )
+        if columns and "connection_type" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE devices ADD COLUMN connection_type VARCHAR(16)"
+            )
 
 
 def dispose_engine() -> None:

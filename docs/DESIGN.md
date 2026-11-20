@@ -177,7 +177,7 @@ so both mechanisms can coexist.
 - computed state (`effective_access`, `next_change_at`).
 - enforcement bookkeeping (`last_applied_access`, `last_applied_at`, `last_error`).
 - observed controller state (`observed_blocked`, hostname, IP, SSID, signal,
-  last seen, UniFi client ID).
+  last seen, UniFi client ID, connection type).
 - provenance (`source`, `created_by`, timestamps).
 
 `audit_log`
@@ -196,9 +196,10 @@ retention override, and the last retention purge (timestamp, count, cutoff).
 A sync run performs:
 
 1. **Discover** connected clients from the controller. Existing devices get
-   refreshed observations; new clients become `ignored` devices when discovery
-   is enabled. User-owned fields (label, notes, access mode) are never
-   overwritten.
+   refreshed observations; new wireless clients become `ignored` devices when
+   discovery is enabled. Wired clients are recorded as wired but excluded from
+   the inventory and never enforced. User-owned fields (label, notes, access
+   mode) are never overwritten.
 2. **Evaluate** every device whose mode is not `ignored`:
    - compute effective access and next transition,
    - compare with `last_applied_access`,
@@ -270,8 +271,8 @@ header. The API is same-origin only.
 Five views:
 
 - **Overview** — counts, controller health, enforcement mode, recent activity.
-- **Devices** — searchable inventory, allow/block actions, edit drawer with
-  notes, observed state, and the schedule editor.
+- **Devices** — searchable WiFi-only inventory, allow/block actions, edit
+  drawer with notes, observed state, and the schedule editor.
 - **Live clients** — connected clients from the controller, with one-click
   allow/block or add-to-inventory.
 - **Audit log** — filter by action, result, or MAC.
@@ -343,7 +344,7 @@ plain-English preview. Block windows are evaluated before allow windows.
 - The application version is read from the repo-root `VERSION` file (mirrored
   in `frontend/package.json` and `IMAGE_VERSION`) and exposed by the API/UI.
 - Jenkins publishes successful `master` builds to Docker Hub as
-  `smccloud/unifi-wifi-tool:<version>` (currently `0.2.0`) and `latest`, using
+  `smccloud/unifi-wifi-tool:<version>` (currently `0.3.0`) and `latest`, using
   the Jenkins credentials named `Docker`.
 - On unRAID, running as `--user 99:100` matches the usual appdata ownership;
   the image itself also has a non-root `app` user.
