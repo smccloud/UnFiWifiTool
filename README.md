@@ -313,8 +313,9 @@ endpoint, and the UI footer/About panel. `frontend/package.json` and
 they drift. Docker Hub images use the same version tag.
 
 Run [`scripts/bump-version.sh`](scripts/bump-version.sh) to update `VERSION` and
-all mirrored references. It bumps by `0.1.0` by default; set `BUMP_AMOUNT` to
-change the amount.
+all mirrored references. It bumps by `0.1.0` by default, commits the changed
+files, and pushes the branch to `origin`. Set `BUMP_AMOUNT` to change the amount
+or `PUSH_REMOTE` to use another remote.
 
 The `DOCKER_NETWORK` parameter defaults to `default`, so build and test containers
 use the Docker bridge network. Set it to `host` on restricted/nested/rootless CI
