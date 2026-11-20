@@ -22,10 +22,10 @@ If you push your own image elsewhere, update `<Repository>` accordingly.
 ## Icon
 
 `unraid/icon.png` is a 512×512 container icon (dark rounded tile with a teal
-shield and WiFi mark). The template loads it from this repository's raw URL, so
-if you fork the project, update `<Icon>` to point at your copy. The editable
-vector source is `unraid/icon.svg`; after changing it, re-render the PNG at
-512×512 (for example with a headless browser or an SVG rasterizer).
+shield and WiFi mark). The template loads it from the public GitHub mirror's raw
+URL, so if you fork the project, update `<Icon>` to point at your copy. The
+editable vector source is `unraid/icon.svg`; after changing it, re-render the
+PNG at 512×512 (for example with a headless browser or an SVG rasterizer).
 
 ## 2. Add the container
 

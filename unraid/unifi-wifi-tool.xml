@@ -14,7 +14,7 @@
   <Category>Network:Other</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL>https://gitea.smccloud.com/smccloud/UnFiWifiTool/raw/branch/master/unraid/unifi-wifi-tool.xml</TemplateURL>
-  <Icon>https://gitea.smccloud.com/smccloud/UniFiWifiTool/raw/branch/master/unraid/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/smccloud/UniFiWifiTool/master/unraid/icon.png</Icon>
   <!-- The image runs as a non-root user. unRAID appdata is normally 99:100. -->
   <ExtraParams>--restart=unless-stopped --init --user 99:100</ExtraParams>
   <PostArgs/>
