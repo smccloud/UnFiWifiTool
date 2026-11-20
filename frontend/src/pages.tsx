@@ -1515,11 +1515,11 @@ export function SettingsPage({
             <span>Source</span>
             <strong>
               <a
-                href="https://gitea.smccloud.com/smccloud/UnFiWifiTool"
+                href="https://github.com/smccloud/UniFiWifiTool"
                 target="_blank"
                 rel="noreferrer"
               >
-                Gitea repository
+                GitHub repository
               </a>
             </strong>
           </div>

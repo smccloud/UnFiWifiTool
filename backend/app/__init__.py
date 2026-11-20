@@ -20,7 +20,7 @@ def _read_version() -> str:
             value = candidate.read_text(encoding="utf-8").strip()
             if value:
                 return value
-    return "0.3.0"
+    return "0.4.0"
 
 
 __version__ = _read_version()

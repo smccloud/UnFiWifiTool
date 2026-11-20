@@ -8,12 +8,12 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://gitea.smccloud.com/smccloud/UnFiWifiTool</Support>
-  <Project>https://gitea.smccloud.com/smccloud/UnFiWifiTool</Project>
+  <Support>https://github.com/smccloud/UniFiWifiTool</Support>
+  <Project>https://github.com/smccloud/UniFiWifiTool</Project>
   <Overview>Manage which devices may access UniFi WiFi, including per-client allow and block schedules, with an audit log.</Overview>
   <Category>Network:Other</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
-  <TemplateURL>https://gitea.smccloud.com/smccloud/UnFiWifiTool/raw/branch/master/unraid/unifi-wifi-tool.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/smccloud/UniFiWifiTool/master/unraid/unifi-wifi-tool.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/smccloud/UniFiWifiTool/master/unraid/icon.png</Icon>
   <!-- The image runs as a non-root user. unRAID appdata is normally 99:100. -->
   <ExtraParams>--restart=unless-stopped --init --user 99:100</ExtraParams>
