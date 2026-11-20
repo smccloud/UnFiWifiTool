@@ -66,8 +66,8 @@ pipeline {
                     rm -f backend/test-results.xml
                     docker run --rm \
                         --network "$DOCKER_NETWORK" \
-                        -v "$WORKSPACE/backend:/src" \
-                        -w /src \
+                        -v "$WORKSPACE:/workspace" \
+                        -w /workspace/backend \
                         -e AUTH_DISABLED=true \
                         -e DATABASE_URL=sqlite:////tmp/ci-test.db \
                         -e SECRET_KEY=jenkins-test-secret-key-0123456789 \
