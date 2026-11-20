@@ -310,6 +310,10 @@ endpoint, and the UI footer/About panel. `frontend/package.json` and
 `.env.example`'s `IMAGE_VERSION` mirror it, and the backend test suite fails if
 they drift. Docker Hub images use the same version tag.
 
+Run [`scripts/bump-version.sh`](scripts/bump-version.sh) to update `VERSION` and
+all mirrored references. It bumps by `0.1.0` by default; set `BUMP_AMOUNT` to
+change the amount.
+
 The `DOCKER_NETWORK` parameter defaults to `default`, so build and test containers
 use the Docker bridge network. Set it to `host` on restricted/nested/rootless CI
 agents where bridge/veth creation is unavailable.
