@@ -136,3 +136,10 @@ generate_vex \
   "openssl" \
   "vulnerable_code_cannot_be_controlled_by_adversary" \
   "Exploitation requires physical control of the hardware to inject voltage faults. That threat model is not applicable to this container."
+
+generate_vex \
+  "CVE-2010-4756" \
+  "libc6" \
+  "glibc" \
+  "vulnerable_code_not_in_execute_path" \
+  "The application does not pass attacker-controlled patterns to glob(3). The glibc behavior is standard POSIX behavior and requires the application to impose its own limits."
