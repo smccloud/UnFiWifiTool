@@ -274,7 +274,7 @@ publish a new release. Docker Hub immutable-tag rejections are reported as
 warnings instead of failing the build.
 
 Docker Scout always writes a SARIF vulnerability report and an SPDX SBOM. The
-scan generates VEX exceptions for the disputed tar and shadow CVEs with
+scan generates VEX exceptions for disputed base-image CVEs with
 [`scripts/generate-vex.sh`](scripts/generate-vex.sh).
 `SCOUT_FAIL_ON_SEVERITY` controls the build gate: `critical` (default),
 `critical,high`, or `none` for report-only mode. Critical-only is the default

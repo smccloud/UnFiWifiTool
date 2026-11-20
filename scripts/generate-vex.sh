@@ -129,3 +129,10 @@ generate_vex \
   "shadow" \
   "vulnerable_code_not_present" \
   "The vulnerable rPath Linux initscripts are not present in this Debian-based image. The image does not run sshd or a login service and does not use /var/log/btmp."
+
+generate_vex \
+  "CVE-2010-0928" \
+  "openssl" \
+  "openssl" \
+  "vulnerable_code_cannot_be_controlled_by_adversary" \
+  "Exploitation requires physical control of the hardware to inject voltage faults. That threat model is not applicable to this container."
