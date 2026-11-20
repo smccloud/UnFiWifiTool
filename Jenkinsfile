@@ -461,7 +461,9 @@ PY
                         echo "ERROR: unexpected DATABASE_URL: $db_url" >&2
                         exit 1
                     }
-                    docker exec "$PERSIST_CONTAINER" test -f /data/unifi-wifi.db
+                    # Run this through sh so Git Bash/MSYS on Windows does not
+                    # rewrite the container path before docker sees it.
+                    docker exec "$PERSIST_CONTAINER" sh -c 'test -f /data/unifi-wifi.db'
 
                     docker exec -i "$PERSIST_CONTAINER" python - <<'PY'
 import json
