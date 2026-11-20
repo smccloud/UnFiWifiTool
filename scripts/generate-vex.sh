@@ -157,3 +157,10 @@ generate_vex \
   "perl" \
   "vulnerable_code_not_in_execute_path" \
   "The runtime image does not use Perl File::Temp; Perl is present only as a Debian base package and the application runs as Python."
+
+generate_vex \
+  "CVE-2013-4392" \
+  "libsystemd0" \
+  "systemd" \
+  "vulnerable_code_not_in_execute_path" \
+  "The container does not run systemd as PID 1, does not use SELinux, and does not use systemd tmpfiles or SELinux relabeling. Only libsystemd0 is present as a shared library."
