@@ -399,6 +399,14 @@ export function DevicesPage({
                     </td>
                     <td>
                       <AccessBadge mode={device.effective_access} />
+                      {device.discipline ? (
+                        <span
+                          className="badge badge-scheduled"
+                          title={`Speed limited until ${formatDateTime(device.discipline.expires_at)}`}
+                        >
+                          Speed limited
+                        </span>
+                      ) : null}
                     </td>
                     <td>
                       <div>{device.last_ssid ?? "—"}</div>
@@ -590,6 +598,11 @@ function DeviceDrawer({
   const [notes, setNotes] = useState(device.notes);
   const [accessMode, setAccessMode] = useState<string>(device.access_mode);
   const [saving, setSaving] = useState(false);
+  const [disciplineBusy, setDisciplineBusy] = useState(false);
+  const [downMbps, setDownMbps] = useState("1");
+  const [upMbps, setUpMbps] = useState("1");
+  const [duration, setDuration] = useState("60");
+  const [customMinutes, setCustomMinutes] = useState("60");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -648,6 +661,56 @@ function DeviceDrawer({
     }
   }
 
+  async function applyDiscipline() {
+    const download = Math.round(Number(downMbps) * 1000);
+    const upload = Math.round(Number(upMbps) * 1000);
+    const minutes = duration === "custom" ? Number(customMinutes) : Number(duration);
+    if (!Number.isFinite(download) || download < 1 || download > 1_000_000) {
+      setError("Download limit must be between 0.001 and 1000 Mbps.");
+      return;
+    }
+    if (!Number.isFinite(upload) || upload < 1 || upload > 1_000_000) {
+      setError("Upload limit must be between 0.001 and 1000 Mbps.");
+      return;
+    }
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 43_200) {
+      setError("Duration must be between 1 minute and 30 days.");
+      return;
+    }
+
+    setDisciplineBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await api.startDiscipline(device.id, {
+        download_kbps: download,
+        upload_kbps: upload,
+        duration_minutes: minutes,
+      });
+      onUpdated(updated);
+      setNotice("Temporary speed limit applied. Access remains available.");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setDisciplineBusy(false);
+    }
+  }
+
+  async function stopDiscipline() {
+    setDisciplineBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await api.endDiscipline(device.id);
+      onUpdated(updated);
+      setNotice("Normal WiFi speed restored.");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setDisciplineBusy(false);
+    }
+  }
+
   async function remove() {
     if (!window.confirm(`Remove ${deviceName(device)} from the local inventory? UniFi block state is not changed.`)) {
       return;
@@ -662,7 +725,9 @@ function DeviceDrawer({
     }
   }
 
-  const disabled = busy || saving;
+  const disabled = busy || saving || disciplineBusy;
+  const discipline = device.discipline;
+  const disciplineOk = status?.controller.discipline_ok ?? false;
 
   return (
     <div className="drawer-backdrop" onMouseDown={onClose} role="presentation">
@@ -685,6 +750,7 @@ function DeviceDrawer({
           <div className="drawer-badges">
             <AccessBadge mode={device.access_mode} />
             <AccessBadge mode={device.effective_access} label={`Effective: ${device.effective_access ?? "unknown"}`} />
+            {device.discipline ? <span className="badge badge-scheduled">Speed limited</span> : null}
             {device.source === "discovered" ? <span className="badge badge-ignored">Discovered</span> : null}
           </div>
 
@@ -734,6 +800,117 @@ function DeviceDrawer({
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="drawer-section">
+            <div className="section-heading">
+              <h3>Discipline Mode</h3>
+              {discipline ? <span className="badge badge-scheduled">Speed limited</span> : null}
+            </div>
+            <p className="muted small">
+              Temporarily reduce this device&apos;s WiFi speed while keeping it connected. This is
+              a parental-control option, not a network block.
+            </p>
+            {!disciplineOk ? (
+              <InfoBanner>
+                Temporary speed limits require local admin credentials and controller support for
+                bandwidth user groups.
+              </InfoBanner>
+            ) : null}
+
+            {discipline ? (
+              <div className="form-stack">
+                <div className="key-values compact">
+                  <div>
+                    <span>Current limit</span>
+                    <strong>
+                      {(discipline.download_kbps / 1000).toFixed(1).replace(/\.0$/, "")} Mbps down /{" "}
+                      {(discipline.upload_kbps / 1000).toFixed(1).replace(/\.0$/, "")} Mbps up
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Ends</span>
+                    <strong title={formatDateTime(discipline.expires_at)}>
+                      {relativeTime(discipline.expires_at)} ({formatDateTime(discipline.expires_at)})
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Status</span>
+                    <strong>{discipline.status}</strong>
+                  </div>
+                </div>
+                {discipline.last_error ? <ErrorBanner message={discipline.last_error} /> : null}
+                <button
+                  className="button button-danger-ghost"
+                  onClick={stopDiscipline}
+                  disabled={disabled}
+                >
+                  {disciplineBusy ? "Restoring…" : "End speed limit"}
+                </button>
+              </div>
+            ) : (
+              <div className="form-stack">
+                <div className="form-grid two">
+                  <label>
+                    <span>Download limit (Mbps)</span>
+                    <input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={downMbps}
+                      onChange={(event) => setDownMbps(event.target.value)}
+                      disabled={disabled || !disciplineOk}
+                    />
+                  </label>
+                  <label>
+                    <span>Upload limit (Mbps)</span>
+                    <input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={upMbps}
+                      onChange={(event) => setUpMbps(event.target.value)}
+                      disabled={disabled || !disciplineOk}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>Duration</span>
+                  <select
+                    value={duration}
+                    onChange={(event) => setDuration(event.target.value)}
+                    disabled={disabled || !disciplineOk}
+                  >
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="480">8 hours</option>
+                    <option value="custom">Custom…</option>
+                  </select>
+                </label>
+                {duration === "custom" ? (
+                  <label>
+                    <span>Custom duration (minutes)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={43200}
+                      value={customMinutes}
+                      onChange={(event) => setCustomMinutes(event.target.value)}
+                      disabled={disabled || !disciplineOk}
+                    />
+                  </label>
+                ) : null}
+                <button
+                  className="button button-primary"
+                  onClick={applyDiscipline}
+                  disabled={disabled || !disciplineOk}
+                >
+                  {disciplineBusy ? "Applying…" : "Apply temporary speed limit"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="drawer-section">
@@ -1039,6 +1216,8 @@ export function AuditPage({ refreshKey }: { refreshKey: number }) {
               <option value="schedule_cleared">Schedule cleared</option>
               <option value="device_added">Device added</option>
               <option value="device_removed">Device removed</option>
+              <option value="discipline_started">Speed limit started</option>
+              <option value="discipline_ended">Speed limit ended</option>
               <option value="sync">Sync</option>
               <option value="login">Login</option>
               <option value="audit_retention_changed">Retention changed</option>
@@ -1305,6 +1484,10 @@ export function SettingsPage({
             <div>
               <span>SSID allowlist API</span>
               <strong>{controller.ssid_allowlist_ok ? "Available" : "Not available"}</strong>
+            </div>
+            <div>
+              <span>Temporary speed limits</span>
+              <strong>{controller.discipline_ok ? "Available" : "Not available"}</strong>
             </div>
           </div>
           {controller.error ? <ErrorBanner message={controller.error} /> : null}
