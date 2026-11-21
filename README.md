@@ -214,19 +214,23 @@ proportionate limit.
 
 Open a device → **Discipline Mode**:
 
-- Set a download limit and upload limit in Mbps.
+- Set download and upload limits in **Mbps or Kbps**. The UI converts the
+  entered values to Kbps and shows the exact values that will be sent before
+  anything is applied.
 - Choose a duration (30 minutes, 1 hour, 2 hours, 4 hours, 8 hours, or a custom
   number of minutes).
-- Apply the limit. The app creates a temporary UniFi bandwidth user group and
-  assigns it to the device.
+- Apply the limit. The app validates the converted Kbps values, creates a
+  temporary UniFi bandwidth user group, and assigns it to the device.
 - The previous bandwidth group is restored automatically when the duration
   expires.
 - Use **End speed limit** to restore normal speed early.
 - Active limits show their expiry in the device list and device drawer.
 - Starting, ending, and automatic restoration are written to the audit log.
 
-This feature needs the local admin credentials (`UNIFI_USERNAME` /
-`UNIFI_PASSWORD`), because it uses UniFi's classic user-group API. If the
+The API uses `download_kbps` / `upload_kbps` fields because UniFi user groups
+are expressed in Kbps. This feature needs the local admin credentials
+(`UNIFI_USERNAME` / `UNIFI_PASSWORD`), because it uses UniFi's classic
+user-group API. If the
 controller does not support user groups, the UI reports that temporary speed
 limits are unavailable rather than blocking the device. Automatic restoration
 runs in the scheduler loop; with `SCHEDULER_ENABLED=false`, use **End speed

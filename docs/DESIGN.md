@@ -321,10 +321,11 @@ overnight, block weekdays, weekend access), day toggles, timezone selection,
 multiple windows, per-window allow/block actions, a fallback state, and a
 plain-English preview. Block windows are evaluated before allow windows.
 
-The Discipline Mode panel provides download/upload limits, duration presets or
-a custom duration, an active-limit expiry display, and an early **End speed
-limit** action. The wording is deliberately neutral and parental-control
-oriented.
+The Discipline Mode panel provides download/upload limits in Mbps or Kbps,
+unit conversion with an exact Kbps preview, duration presets or a custom
+duration, an active-limit expiry display, and an early **End speed limit**
+action. Values are validated and converted to Kbps before the controller call.
+The wording is deliberately neutral and parental-control oriented.
 
 ## 9. Security
 

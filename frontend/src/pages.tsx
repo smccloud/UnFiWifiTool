@@ -16,6 +16,7 @@ import {
   describeSchedule,
   errorMessage,
   formatDateTime,
+  formatSpeed,
   relativeTime,
   signalLabel,
 } from "./lib/format";
@@ -599,8 +600,9 @@ function DeviceDrawer({
   const [accessMode, setAccessMode] = useState<string>(device.access_mode);
   const [saving, setSaving] = useState(false);
   const [disciplineBusy, setDisciplineBusy] = useState(false);
-  const [downMbps, setDownMbps] = useState("1");
-  const [upMbps, setUpMbps] = useState("1");
+  const [downLimit, setDownLimit] = useState("1");
+  const [upLimit, setUpLimit] = useState("1");
+  const [speedUnit, setSpeedUnit] = useState<"Mbps" | "Kbps">("Mbps");
   const [duration, setDuration] = useState("60");
   const [customMinutes, setCustomMinutes] = useState("60");
   const [error, setError] = useState("");
@@ -661,30 +663,65 @@ function DeviceDrawer({
     }
   }
 
+  const speedFactor = speedUnit === "Mbps" ? 1000 : 1;
+  const downloadKbps = Math.round(Number(downLimit) * speedFactor);
+  const uploadKbps = Math.round(Number(upLimit) * speedFactor);
+  const minutes = duration === "custom" ? Number(customMinutes) : Number(duration);
+  const speedMathValid =
+    Number.isFinite(downloadKbps) &&
+    downloadKbps >= 1 &&
+    downloadKbps <= 1_000_000 &&
+    Number.isFinite(uploadKbps) &&
+    uploadKbps >= 1 &&
+    uploadKbps <= 1_000_000;
+  const durationValid = Number.isFinite(minutes) && minutes >= 1 && minutes <= 43_200;
+
+  function changeSpeedUnit(nextUnit: "Mbps" | "Kbps") {
+    if (nextUnit === speedUnit) return;
+    const convert = (value: string) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return value;
+      const converted = nextUnit === "Kbps" ? numeric * 1000 : numeric / 1000;
+      return String(Number(converted.toFixed(3)));
+    };
+    setDownLimit(convert);
+    setUpLimit(convert);
+    setSpeedUnit(nextUnit);
+  }
+
+  function speedDetail(kbps: number): string {
+    return kbps >= 1000 ? `${formatSpeed(kbps)} (${kbps} Kbps)` : formatSpeed(kbps);
+  }
+
+  function durationLabel(value: number): string {
+    if (value % 1440 === 0 && value >= 1440) return `${value / 1440} day(s)`;
+    if (value % 60 === 0 && value >= 60) return `${value / 60} hour(s)`;
+    return `${value} minute(s)`;
+  }
+
   async function applyDiscipline() {
-    const download = Math.round(Number(downMbps) * 1000);
-    const upload = Math.round(Number(upMbps) * 1000);
-    const minutes = duration === "custom" ? Number(customMinutes) : Number(duration);
-    if (!Number.isFinite(download) || download < 1 || download > 1_000_000) {
-      setError("Download limit must be between 0.001 and 1000 Mbps.");
+    if (!speedMathValid) {
+      setError(
+        speedUnit === "Mbps"
+          ? "Speed limits must be between 0.001 and 1000 Mbps."
+          : "Speed limits must be between 1 and 1,000,000 Kbps.",
+      );
       return;
     }
-    if (!Number.isFinite(upload) || upload < 1 || upload > 1_000_000) {
-      setError("Upload limit must be between 0.001 and 1000 Mbps.");
-      return;
-    }
-    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 43_200) {
+    if (!durationValid) {
       setError("Duration must be between 1 minute and 30 days.");
       return;
     }
 
+    // The API and UniFi user groups use Kbps. Convert only after validating
+    // both the entered value and the resulting rounded Kbps value.
     setDisciplineBusy(true);
     setError("");
     setNotice("");
     try {
       const updated = await api.startDiscipline(device.id, {
-        download_kbps: download,
-        upload_kbps: upload,
+        download_kbps: downloadKbps,
+        upload_kbps: uploadKbps,
         duration_minutes: minutes,
       });
       onUpdated(updated);
@@ -824,8 +861,8 @@ function DeviceDrawer({
                   <div>
                     <span>Current limit</span>
                     <strong>
-                      {(discipline.download_kbps / 1000).toFixed(1).replace(/\.0$/, "")} Mbps down /{" "}
-                      {(discipline.upload_kbps / 1000).toFixed(1).replace(/\.0$/, "")} Mbps up
+                      {formatSpeed(discipline.download_kbps)} down /{" "}
+                      {formatSpeed(discipline.upload_kbps)} up
                     </strong>
                   </div>
                   <div>
@@ -852,28 +889,39 @@ function DeviceDrawer({
               <div className="form-stack">
                 <div className="form-grid two">
                   <label>
-                    <span>Download limit (Mbps)</span>
+                    <span>Download limit ({speedUnit})</span>
                     <input
                       type="number"
-                      min={0.1}
-                      step={0.1}
-                      value={downMbps}
-                      onChange={(event) => setDownMbps(event.target.value)}
+                      min={speedUnit === "Mbps" ? 0.001 : 1}
+                      step={speedUnit === "Mbps" ? 0.1 : 1}
+                      value={downLimit}
+                      onChange={(event) => setDownLimit(event.target.value)}
                       disabled={disabled || !disciplineOk}
                     />
                   </label>
                   <label>
-                    <span>Upload limit (Mbps)</span>
+                    <span>Upload limit ({speedUnit})</span>
                     <input
                       type="number"
-                      min={0.1}
-                      step={0.1}
-                      value={upMbps}
-                      onChange={(event) => setUpMbps(event.target.value)}
+                      min={speedUnit === "Mbps" ? 0.001 : 1}
+                      step={speedUnit === "Mbps" ? 0.1 : 1}
+                      value={upLimit}
+                      onChange={(event) => setUpLimit(event.target.value)}
                       disabled={disabled || !disciplineOk}
                     />
                   </label>
                 </div>
+                <label>
+                  <span>Speed units</span>
+                  <select
+                    value={speedUnit}
+                    onChange={(event) => changeSpeedUnit(event.target.value as "Mbps" | "Kbps")}
+                    disabled={disabled || !disciplineOk}
+                  >
+                    <option value="Mbps">Mbps (megabits per second)</option>
+                    <option value="Kbps">Kbps (kilobits per second)</option>
+                  </select>
+                </label>
                 <label>
                   <span>Duration</span>
                   <select
@@ -902,10 +950,21 @@ function DeviceDrawer({
                     />
                   </label>
                 ) : null}
+                <div className="schedule-preview">
+                  {speedMathValid && durationValid ? (
+                    <>
+                      Will apply <strong>{speedDetail(downloadKbps)}</strong> down /{" "}
+                      <strong>{speedDetail(uploadKbps)}</strong> up for{" "}
+                      {durationLabel(minutes)}.
+                    </>
+                  ) : (
+                    "Enter valid speed limits and a duration to see the values that will be sent to UniFi."
+                  )}
+                </div>
                 <button
                   className="button button-primary"
                   onClick={applyDiscipline}
-                  disabled={disabled || !disciplineOk}
+                  disabled={disabled || !disciplineOk || !speedMathValid || !durationValid}
                 >
                   {disciplineBusy ? "Applying…" : "Apply temporary speed limit"}
                 </button>
