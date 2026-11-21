@@ -122,12 +122,7 @@ export default function App() {
         <div className="login-theme">
           <ThemeSwitch preference={preference} onChange={setPreference} />
         </div>
-        <LoginPage
-          startupError={startupError}
-          onLoggedIn={async () => {
-            await loadMe();
-          }}
-        />
+        <LoginPage startupError={startupError} onLoggedIn={loadMe} />
       </>
     );
   }

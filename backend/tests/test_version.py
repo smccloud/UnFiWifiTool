@@ -14,7 +14,12 @@ def test_application_version_is_consistent():
     # The backend reads VERSION (unless APP_VERSION overrides it).
     assert __version__ == version
 
-    package = json.loads((root / "frontend" / "package.json").read_text(encoding="utf-8"))
+    try:
+        package = json.loads(
+            (root / "frontend" / "package.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AssertionError(f"Could not read frontend/package.json: {exc}") from exc
     assert package["version"] == version
 
     env_lines = (root / ".env.example").read_text(encoding="utf-8").splitlines()

@@ -39,15 +39,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("X-CSRF-Token", csrfToken);
   }
 
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+
   let response: Response;
   try {
     response = await fetch(path, {
       ...init,
       headers,
       credentials: "same-origin",
+      signal: init.signal ?? controller.signal,
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("Request timed out", 0);
+    }
     throw new ApiError("Cannot reach the server", 0);
+  } finally {
+    window.clearTimeout(timeout);
   }
 
   if (response.status === 401) {

@@ -1,28 +1,25 @@
 /* Apply the saved theme before the app renders to avoid a flash. */
 (function () {
-  var key = "unifi-wifi-theme";
-  var preference = "system";
+  const key = "unifi-wifi-theme";
+  let preference = "system";
   try {
-    var stored = window.localStorage.getItem(key);
+    const stored = window.localStorage.getItem(key);
     if (stored === "light" || stored === "dark" || stored === "system") {
       preference = stored;
     }
-  } catch (error) {
+  } catch {
     /* localStorage can be unavailable; fall back to the system preference. */
   }
 
-  var resolved = preference;
-  if (preference === "system") {
-    resolved =
-      window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "dark";
-  }
+  const prefersLight =
+    window.matchMedia?.("(prefers-color-scheme: light)")?.matches ?? false;
+  const resolved =
+    preference === "system" ? (prefersLight ? "light" : "dark") : preference;
 
   document.documentElement.dataset.theme = resolved;
   document.documentElement.dataset.themePreference = preference;
 
-  var meta = document.querySelector('meta[name="theme-color"]');
+  const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     meta.setAttribute("content", resolved === "light" ? "#f3f6fb" : "#0b1120");
   }

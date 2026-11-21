@@ -315,6 +315,13 @@ export function DevicesPage({
     }
   }
 
+  async function handleCreated(device: Device) {
+    setAddOpen(false);
+    setNotice(`Added ${deviceName(device)}.`);
+    await load();
+    onChanged();
+  }
+
   const classicOk = status?.controller.classic_ok ?? false;
 
   return (
@@ -438,12 +445,7 @@ export function DevicesPage({
       {addOpen ? (
         <AddDeviceModal
           onClose={() => setAddOpen(false)}
-          onCreated={async (device) => {
-            setAddOpen(false);
-            setNotice(`Added ${deviceName(device)}.`);
-            await load();
-            onChanged();
-          }}
+          onCreated={handleCreated}
         />
       ) : null}
 
